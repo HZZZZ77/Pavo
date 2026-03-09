@@ -8,19 +8,19 @@ import mpv
 
 class PavoEngine:
     def __init__(self):
-        print("⚙️ 正在初始化 Pavo 引擎 (最终点火版)...")
+        print("[Engine] Initializing Pavo engine...")
         try:
             self.player = mpv.MPV(
-                hwdec="auto",      # 【已修复】：正确的写法是 hwdec="auto"
-                vo="libmpv",       # 必须保留，指定输出给 Qt 画板
+                hwdec="auto",
+                vo="libmpv",
                 keep_open="yes"
             )
-            print(f"✅ 引擎初始化成功！(mpv version: {self.player.mpv_version})")
+            print(f"[Engine] Initialization successful. (mpv version: {self.player.mpv_version})")
         except Exception as e:
-            print(f"❌ 引擎初始化失败: {e}")
+            print(f"[Engine] Error: Initialization failed - {e}")
             self.player = None
 
     def play(self, media_path):
         if self.player:
-            print(f"▶️ 接收到播放指令: {media_path}")
+            print(f"[Engine] Loading media: {media_path}")
             self.player.play(media_path)

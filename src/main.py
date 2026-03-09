@@ -11,7 +11,8 @@ from video_widget import PavoVideoWidget
 class PavoPlayer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Pavo 🦚 - 绝对物理闭环版")
+        # 【修改点】：极简且专业的标题
+        self.setWindowTitle("Pavo") 
         self.resize(1000, 600)
 
         self.engine = PavoEngine()
@@ -31,7 +32,6 @@ if __name__ == "__main__":
     fmt = QSurfaceFormat()
     fmt.setVersion(4, 1)
     fmt.setProfile(QSurfaceFormat.CoreProfile)
-    # 强制 Mac 分配独立的 OpenGL 缓冲区
     fmt.setDepthBufferSize(24)
     QSurfaceFormat.setDefaultFormat(fmt)
 

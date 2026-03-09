@@ -1,58 +1,142 @@
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QGraphicsDropShadowEffect
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 
 class HUDPanel(QWidget):
+    play_state_changed = Signal(bool)
+    volume_changed = Signal(int)
+    mute_changed = Signal(bool)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
-        
-        # 定义一个状态变量，记录当前是否正在播放
         self.is_playing = True 
-        
+        self.is_muted = False      
+        self.current_volume = 100  
         self.init_ui()
 
     def init_ui(self):
-        # 【严谨修正】：将 QWidget 改为 HUDPanel，防止样式“污染”到内部的按钮
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(40) 
+        shadow.setColor(QColor(0, 0, 0, 180)) 
+        shadow.setOffset(0, 15) 
+        self.setGraphicsEffect(shadow)
+
+        # 这一次，我保证里面没有任何非法的 '#' 注释！
         self.setStyleSheet("""
             HUDPanel {
-                background-color: rgba(30, 30, 30, 220);
-                border: 1px solid rgba(255, 255, 255, 50);
-                border-radius: 20px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 rgba(255, 255, 255, 30),
+                                            stop:0.5 rgba(200, 200, 200, 15),
+                                            stop:1 rgba(150, 150, 150, 25));
+                border-top: 1px solid rgba(255, 255, 255, 160);
+                border-left: 1px solid rgba(255, 255, 255, 90);
+                border-right: 1px solid rgba(255, 255, 255, 90);
+                border-bottom: 1px solid rgba(255, 255, 255, 30);
+                border-radius: 40px;
             }
-            /* 新增：专门针对按钮的极简样式 */
             QPushButton {
-                color: white;
-                background-color: transparent;
+                background-color: transparent; 
                 border: none;
+                color: rgba(255, 255, 255, 220); 
+            }
+            QPushButton:hover {
+                color: rgba(255, 255, 255, 255);
+            }
+            QPushButton#PlayBtn {
                 font-size: 48px;
             }
-            /* 新增：鼠标悬停时的微交互（颜色微微变暗） */
-            QPushButton:hover {
-                color: rgba(255, 255, 255, 150);
+            QPushButton#MuteBtn {
+                font-size: 14px;
+                font-weight: 800;
+                letter-spacing: 2px;
+            }
+            QWidget#VolumeContainer {
+                background-color: transparent;
+                border: none;
+            }
+            QSlider {
+                background: transparent;
+            }
+            QSlider::groove:horizontal {
+                border-radius: 3px;
+                height: 6px;
+                background: rgba(0, 0, 0, 80); 
+            }
+            QSlider::handle:horizontal {
+                background: white;
+                border: 1px solid rgba(0, 0, 0, 50);
+                width: 14px;
+                height: 14px;
+                margin: -4px 0;
+                border-radius: 7px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: rgba(255, 255, 255, 255);
+            }
+            QSlider::sub-page:horizontal {
+                background: white; 
+                border-radius: 3px;
+            }
+            QSlider::add-page:horizontal {
+                background: transparent;
             }
         """)
-        self.setFixedHeight(80)
-        self.setMinimumWidth(400)
+        self.setFixedHeight(80) 
         
         self.layout = QHBoxLayout(self)
-        self.layout.setContentsMargins(20, 0, 20, 0)
+        self.layout.setContentsMargins(40, 0, 40, 0)
 
-        # === 核心添加：纯净几何播放按钮 ===
-        # 因为视频是默认自动播放的，所以初始图标设为“暂停(⏸)”
-        self.play_btn = QPushButton("⏸")
-        self.play_btn.setFixedSize(70, 70)
-        self.play_btn.setCursor(Qt.PointingHandCursor) # 鼠标放上去变小手
+        self.volume_group = QWidget()
+        self.volume_group.setObjectName("VolumeContainer")
+        self.volume_group.setFixedWidth(130) 
+        vol_layout = QHBoxLayout(self.volume_group)
+        vol_layout.setContentsMargins(0, 0, 0, 0)
+        vol_layout.setSpacing(10)
         
-        # 将按钮点击事件，连接到我们自定义的开关函数上
+        self.mute_btn = QPushButton("VOL") 
+        self.mute_btn.setObjectName("MuteBtn")
+        self.mute_btn.setFixedSize(40, 40)
+        self.mute_btn.setCursor(Qt.PointingHandCursor)
+        self.mute_btn.clicked.connect(self.toggle_mute_ui)
+
+        self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider.setRange(0, 100)
+        self.vol_slider.setValue(100)
+        self.vol_slider.setCursor(Qt.PointingHandCursor)
+        self.vol_slider.valueChanged.connect(self.volume_changed.emit)
+
+        vol_layout.addWidget(self.mute_btn)
+        vol_layout.addWidget(self.vol_slider)
+
+        self.left_spacer = QWidget()
+        self.left_spacer.setFixedWidth(130) 
+        # 强制显式声明左侧占位符透明
+        self.left_spacer.setStyleSheet("background-color: transparent; border: none;")
+
+        self.play_btn = QPushButton("⏸")
+        self.play_btn.setObjectName("PlayBtn")
+        self.play_btn.setFixedSize(60, 60)
+        self.play_btn.setCursor(Qt.PointingHandCursor)
         self.play_btn.clicked.connect(self.toggle_play_ui)
 
-        # 把按钮加进面板的布局里，并强制居中
-        self.layout.addWidget(self.play_btn, alignment=Qt.AlignCenter)
+        self.layout.addWidget(self.left_spacer)
+        self.layout.addStretch()
+        self.layout.addWidget(self.play_btn)
+        self.layout.addStretch()
+        self.layout.addWidget(self.volume_group)
 
-    # UI 层的状态切换函数
     def toggle_play_ui(self):
         self.is_playing = not self.is_playing
-        if self.is_playing:
-            self.play_btn.setText("⏸") # 正在播放，显示暂停图标
+        self.play_btn.setText("⏸" if self.is_playing else "▶") 
+        self.play_state_changed.emit(self.is_playing)
+
+    def toggle_mute_ui(self):
+        self.is_muted = not self.is_muted
+        if self.is_muted:
+            self.mute_btn.setText("MUT")
+            self.mute_btn.setStyleSheet("color: rgba(255, 80, 80, 255);")
         else:
-            self.play_btn.setText("▶") # 已暂停，显示播放图标
+            self.mute_btn.setText("VOL")
+            self.mute_btn.setStyleSheet("color: rgba(255, 255, 255, 220);")
+        self.mute_changed.emit(self.is_muted)

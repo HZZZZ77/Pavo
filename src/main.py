@@ -13,11 +13,11 @@ from components.hud_panel import HUDPanel
 class PavoPlayer(QMainWindow):
     def __init__(self):
         super().__init__()
-        # 【你的试金石】：如果你运行后标题不是下面这个，说明你没保存成功！
-        self.setWindowTitle("Pavo - 悬浮测试版") 
+        self.setWindowTitle("Pavo") 
         self.resize(1000, 600)
         self.setStyleSheet("background-color: black;")
 
+        # 1. 实例化引擎（电视机）
         self.engine = PavoEngine()
         self.init_ui()
 
@@ -37,11 +37,22 @@ class PavoPlayer(QMainWindow):
         self.overlay_layout = QVBoxLayout(self.overlay)
         self.overlay_layout.setContentsMargins(0, 0, 0, 40) 
         
+        # 2. 实例化面板（遥控器）
         self.hud = HUDPanel()
         self.overlay_layout.addWidget(self.hud, 0, Qt.AlignHCenter | Qt.AlignBottom)
 
         self.main_layout.addWidget(self.overlay, 0, 0)
 
+        # 3. 核心连线：将 UI 的信号，直接插入 引擎 的槽！
+        self.hud.play_state_changed.connect(self.engine.set_playing)
+        # === 本次新增的两根线 ===
+        self.hud.volume_changed.connect(self.engine.set_volume)
+        self.hud.mute_changed.connect(self.engine.set_mute)
+
+
+# ==========================================
+# 【刚才被我漏掉的启动块】：没有它，程序就不会运行
+# ==========================================
 if __name__ == "__main__":
     fmt = QSurfaceFormat()
     fmt.setVersion(4, 1)

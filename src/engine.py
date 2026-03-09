@@ -10,10 +10,14 @@ class PavoEngine:
     def __init__(self):
         print("[Engine] Initializing Pavo engine...")
         try:
+            # === 【性能优化 1】：扩充底层网络与解码缓存区 ===
             self.player = mpv.MPV(
                 hwdec="auto",
                 vo="libmpv",
-                keep_open="yes"
+                keep_open="yes",
+                cache="yes",                    # 强制开启网络缓存
+                demuxer_max_bytes="100M",       # 向前预读最大 100MB
+                demuxer_max_back_bytes="50M"    # 向后保留最大 50MB (防回退卡顿)
             )
             print(f"[Engine] Initialization successful. (mpv version: {self.player.mpv_version})")
         except Exception as e:
@@ -25,25 +29,40 @@ class PavoEngine:
             print(f"[Engine] Loading media: {media_path}")
             self.player.play(media_path)
 
-    # === 本次新增的“槽”函数：控制引擎的暂停与播放 ===
     def set_playing(self, is_playing: bool):
         if self.player:
-            # mpv 底层的 pause 属性：True 代表暂停，False 代表播放
-            # 所以我们要把传进来的 is_playing 状态反转一下赋给它
             self.player.pause = not is_playing
-            
-            # 打印严谨的英文日志，方便我们在终端追踪状态
             state_str = "Playing" if is_playing else "Paused"
             print(f"[Engine] State changed to: {state_str}")
-            # === 本次新增的“槽”函数：控制音量与静音 ===
+
     def set_volume(self, volume: int):
         if self.player:
-            # mpv 底层的 volume 属性接收 0-100 的数值
             self.player.volume = volume
-            print(f"[Engine] Volume set to: {volume}")
 
     def set_mute(self, is_mute: bool):
         if self.player:
-            # mpv 底层的 mute 属性接收 True/False
             self.player.mute = is_mute
-            print(f"[Engine] Mute set to: {is_mute}")
+
+    def get_progress(self):
+        try:
+            if self.player:
+                t = self.player.time_pos
+                d = self.player.duration
+                if t is not None and d is not None and d > 0:
+                    return t, d
+        except Exception:
+            pass
+        return 0, 0
+
+    def seek_to_percent(self, percent: float):
+        try:
+            if self.player:
+                d = self.player.duration
+                if d is not None and d > 0:
+                    target_time = d * percent
+                    # === 【性能优化 2】：极速关键帧跳转 ===
+                    # reference="absolute" 表示跳转到绝对时间
+                    # precision="keyframes" 表示寻找最近的关键帧，0 算力延迟
+                    self.player.seek(target_time, reference="absolute", precision="keyframes")
+        except Exception:
+            pass

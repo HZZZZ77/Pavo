@@ -5,6 +5,7 @@ bootstrap.setup_pavo_env()
 from PySide6.QtWidgets import QApplication, QMainWindow, QGridLayout, QWidget, QVBoxLayout
 from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 from engine import PavoEngine
 from video_widget import PavoVideoWidget
@@ -48,6 +49,23 @@ class PavoPlayer(QMainWindow):
         # === 本次新增的两根线 ===
         self.hud.volume_changed.connect(self.engine.set_volume)
         self.hud.mute_changed.connect(self.engine.set_mute)
+        # 原有连线
+        self.hud.play_state_changed.connect(self.engine.set_playing)
+        self.hud.volume_changed.connect(self.engine.set_volume)
+        self.hud.mute_changed.connect(self.engine.set_mute)
+        
+        # 新增：进度跳转连线
+        self.hud.seek_requested.connect(self.engine.seek_to_percent)
+
+        # 新增：启动引擎状态轮询
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.sync_progress)
+        self.timer.start(500)
+
+    # 在 PavoPlayer 类中追加此同步方法
+    def sync_progress(self):
+        current, total = self.engine.get_progress()
+        self.hud.update_progress(current, total)
 
 
 # ==========================================

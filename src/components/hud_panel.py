@@ -1,6 +1,6 @@
 import time
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QGraphicsDropShadowEffect, QLabel
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QPoint
 from PySide6.QtGui import QColor
 
 class HUDPanel(QWidget):
@@ -10,6 +10,8 @@ class HUDPanel(QWidget):
     seek_requested = Signal(float)
     skip_requested = Signal(int)
     fullscreen_requested = Signal()
+    # 👑 存活信号
+    user_activity = Signal() 
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -17,6 +19,8 @@ class HUDPanel(QWidget):
         self.is_playing = True 
         self.is_muted = False      
         self.last_seek_time = 0  
+        self._drag_pos = None 
+        self._user_dragged = False # 记录用户是否手动拖拽过
         self.init_ui()
 
     def init_ui(self):
@@ -39,226 +43,164 @@ class HUDPanel(QWidget):
                 border-radius: 30px;
             }
             QPushButton {
-                background-color: transparent; 
-                border: none;
+                background-color: transparent; border: none;
                 color: rgba(255, 255, 255, 210);
-                font-family: "SF Pro Rounded", "Arial Rounded MT Bold", -apple-system, sans-serif;
+                font-family: -apple-system, "SF Pro Rounded", sans-serif;
+                font-weight: 900;
             }
             QPushButton:hover {
                 color: rgba(255, 255, 255, 255);
+                background-color: rgba(255, 255, 255, 20);
+                border-radius: 20px;
             }
-            /* 👑 核心修复 1：视觉层次 CSS 强制接管 */
-            QPushButton#PlayBtn {
-                font-size: 36px; /* 核心按键，大幅放大 */
-            }
-            QPushButton#SkipBtn {
-                font-size: 18px; /* 辅助按键，保持小巧，作为配重 */
-                letter-spacing: -1px; /* 微调间距，形成紧凑的图标 */
-            }
-            QPushButton#MuteBtn {
-                font-size: 13px;
-                font-weight: 800;
-                letter-spacing: 2px;
-            }
-            QPushButton#UtilBtn {
-                font-size: 20px;
-                font-weight: 600;
-            }
+            QPushButton#PlayBtn { font-size: 32px; }
+            QPushButton#SkipBtn { font-size: 20px; }
+            QPushButton#MuteBtn { font-size: 13px; letter-spacing: 1px; }
+            QPushButton#UtilBtn { font-size: 20px; }
             QLabel {
-                color: rgba(255, 255, 255, 210);
-                font-size: 13px;
-                font-weight: 600;
-                font-family: "Courier New", monospace; 
-                background: transparent;
+                color: rgba(255, 255, 255, 210); font-size: 13px;
+                font-weight: 600; font-family: "Courier New", monospace; 
             }
-            QWidget#TransparentContainer {
-                background-color: transparent;
-                border: none;
-            }
-            QSlider {
-                background: transparent;
-            }
-            QSlider::groove:horizontal {
-                border-radius: 2px;
-                height: 4px;
-                background: rgba(0, 0, 0, 80); 
-            }
-            QSlider::sub-page:horizontal {
-                background: white; 
-                border-radius: 2px;
-            }
-            QSlider::add-page:horizontal {
-                background: transparent;
-            }
-            QSlider::handle:horizontal {
-                width: 12px;
-                height: 12px;
-                margin: -4px 0;
-                border-radius: 6px;
-                background: white;
-                border: none;
-            }
-            QSlider::handle:horizontal:hover {
-                background: rgba(255, 255, 255, 255);
-                width: 16px;
-                height: 16px;
-                margin: -6px -2px;
-                border-radius: 8px;
-            }
+            QSlider::groove:horizontal { border-radius: 2px; height: 4px; background: rgba(0, 0, 0, 80); }
+            QSlider::sub-page:horizontal { background: white; border-radius: 2px; }
+            QSlider::handle:horizontal { width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; background: white; }
+            QSlider::handle:horizontal:hover { width: 14px; height: 14px; margin: -5px -1px; border-radius: 7px; }
         """)
         self.setFixedHeight(105) 
         
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(35, 15, 35, 15)
-        self.main_layout.setSpacing(8)
+        main_v_layout = QVBoxLayout(self)
+        main_v_layout.setContentsMargins(30, 15, 30, 15)
+        main_v_layout.setSpacing(5)
 
-        self.time_layout = QHBoxLayout()
-        self.time_layout.setContentsMargins(0, 0, 0, 0)
-        self.time_layout.setSpacing(15)
-
+        time_row = QHBoxLayout()
         self.curr_time_label = QLabel("00:00")
         self.total_time_label = QLabel("00:00")
-
         self.progress_slider = QSlider(Qt.Horizontal)
         self.progress_slider.setObjectName("ProgressBar")
         self.progress_slider.setRange(0, 1000)
-        self.progress_slider.setCursor(Qt.PointingHandCursor)
         self.progress_slider.sliderMoved.connect(self.on_slider_moved)
         self.progress_slider.sliderReleased.connect(self.on_seek)
         
-        self.time_layout.addWidget(self.curr_time_label)
-        self.time_layout.addWidget(self.progress_slider)
-        self.time_layout.addWidget(self.total_time_label)
+        time_row.addWidget(self.curr_time_label)
+        time_row.addWidget(self.progress_slider)
+        time_row.addWidget(self.total_time_label)
+        main_v_layout.addLayout(time_row)
 
-        self.main_layout.addLayout(self.time_layout)
-
-        self.controls_layout = QHBoxLayout()
-        self.controls_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.left_group = QWidget()
-        self.left_group.setObjectName("TransparentContainer")
-        self.left_group.setFixedWidth(160) 
-        left_layout = QHBoxLayout(self.left_group)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(10)
-        
-        self.mute_btn = QPushButton("VOL") 
+        btns_row = QHBoxLayout()
+        self.vol_group = QWidget()
+        self.vol_group.setFixedWidth(150)
+        vol_layout = QHBoxLayout(self.vol_group)
+        vol_layout.setContentsMargins(0, 0, 0, 0)
+        self.mute_btn = QPushButton("VOL")
         self.mute_btn.setObjectName("MuteBtn")
-        self.mute_btn.setFixedSize(40, 30)
-        self.mute_btn.setCursor(Qt.PointingHandCursor)
-        self.mute_btn.clicked.connect(self.toggle_mute_ui)
-
         self.vol_slider = QSlider(Qt.Horizontal)
-        self.vol_slider.setObjectName("VolumeBar")
         self.vol_slider.setRange(0, 100)
         self.vol_slider.setValue(100)
-        self.vol_slider.setCursor(Qt.PointingHandCursor)
         self.vol_slider.valueChanged.connect(self.volume_changed.emit)
-
-        left_layout.addWidget(self.mute_btn)
-        left_layout.addWidget(self.vol_slider)
-
-        self.center_group = QWidget()
-        self.center_group.setObjectName("TransparentContainer")
-        center_layout = QHBoxLayout(self.center_group)
-        center_layout.setContentsMargins(0, 0, 0, 0)
-        center_layout.setSpacing(15)
-
-        self.rewind_btn = QPushButton("◄◄") 
+        vol_layout.addWidget(self.mute_btn)
+        vol_layout.addWidget(self.vol_slider)
+        
+        self.center_btns = QWidget()
+        center_layout = QHBoxLayout(self.center_btns)
+        center_layout.setSpacing(10)
+        self.rewind_btn = QPushButton("◀◀")
         self.rewind_btn.setObjectName("SkipBtn")
-        # 放大物理占位，确保大字符不被裁切
-        self.rewind_btn.setFixedSize(60, 60)
-        self.rewind_btn.setCursor(Qt.PointingHandCursor)
-        self.rewind_btn.clicked.connect(lambda: self.skip_requested.emit(-10))
-
-        # 👑 核心修复 2：暂停图案替换为实心双竖杠 ▮▮
-        self.play_btn = QPushButton("▮▮")
+        self.rewind_btn.setFixedSize(45, 45)
+        self.play_btn = QPushButton("▶")
         self.play_btn.setObjectName("PlayBtn")
-        self.play_btn.setFixedSize(60, 60)
-        self.play_btn.setCursor(Qt.PointingHandCursor)
-        self.play_btn.clicked.connect(self.toggle_play_ui)
-
-        self.forward_btn = QPushButton("►►") 
+        self.play_btn.setFixedSize(55, 55) 
+        self.forward_btn = QPushButton("▶▶")
         self.forward_btn.setObjectName("SkipBtn")
-        self.forward_btn.setFixedSize(60, 60)
-        self.forward_btn.setCursor(Qt.PointingHandCursor)
-        self.forward_btn.clicked.connect(lambda: self.skip_requested.emit(10))
-
+        self.forward_btn.setFixedSize(45, 45)
         center_layout.addWidget(self.rewind_btn)
         center_layout.addWidget(self.play_btn)
         center_layout.addWidget(self.forward_btn)
-
-        self.right_group = QWidget()
-        self.right_group.setObjectName("TransparentContainer")
-        self.right_group.setFixedWidth(160)
-        right_layout = QHBoxLayout(self.right_group)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(15)
-        right_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
+        
+        self.right_utils = QWidget()
+        self.right_utils.setFixedWidth(150)
+        util_layout = QHBoxLayout(self.right_utils)
+        util_layout.setAlignment(Qt.AlignRight)
         self.settings_btn = QPushButton("•••")
         self.settings_btn.setObjectName("UtilBtn")
-        self.settings_btn.setFixedSize(30, 30)
-        self.settings_btn.setCursor(Qt.PointingHandCursor)
-
         self.fullscreen_btn = QPushButton("⛶")
         self.fullscreen_btn.setObjectName("UtilBtn")
-        self.fullscreen_btn.setFixedSize(30, 30)
-        self.fullscreen_btn.setCursor(Qt.PointingHandCursor)
+        util_layout.addWidget(self.settings_btn)
+        util_layout.addWidget(self.fullscreen_btn)
+
+        btns_row.addWidget(self.vol_group)
+        btns_row.addStretch()
+        btns_row.addWidget(self.center_btns)
+        btns_row.addStretch()
+        btns_row.addWidget(self.right_utils)
+        main_v_layout.addLayout(btns_row)
+
+        self.rewind_btn.clicked.connect(lambda: self.skip_requested.emit(-10))
+        self.forward_btn.clicked.connect(lambda: self.skip_requested.emit(10))
+        self.play_btn.clicked.connect(self.toggle_play_ui)
+        self.mute_btn.clicked.connect(self.toggle_mute_ui)
         self.fullscreen_btn.clicked.connect(self.fullscreen_requested.emit)
-
-        right_layout.addWidget(self.settings_btn)
-        right_layout.addWidget(self.fullscreen_btn)
-
-        self.controls_layout.addWidget(self.left_group)
-        self.controls_layout.addStretch()
-        self.controls_layout.addWidget(self.center_group)
-        self.controls_layout.addStretch()
-        self.controls_layout.addWidget(self.right_group)
-
-        self.main_layout.addLayout(self.controls_layout)
 
     def toggle_play_ui(self):
         self.is_playing = not self.is_playing
-        # 👑 核心修复 3：播放/暂停时的字符对应替换
-        self.play_btn.setText("▮▮" if self.is_playing else "►") 
+        self.play_btn.setText("▶" if not self.is_playing else "❙❙") 
         self.play_state_changed.emit(self.is_playing)
 
     def toggle_mute_ui(self):
         self.is_muted = not self.is_muted
-        if self.is_muted:
-            self.mute_btn.setText("MUT")
-            self.mute_btn.setStyleSheet("color: rgba(255, 80, 80, 255);")
-        else:
-            self.mute_btn.setText("VOL")
-            self.mute_btn.setStyleSheet("color: rgba(255, 255, 255, 210);")
+        self.mute_btn.setText("MUT" if self.is_muted else "VOL")
+        self.mute_btn.setStyleSheet("color: #ff5555;" if self.is_muted else "")
         self.mute_changed.emit(self.is_muted)
 
     def on_slider_moved(self, value):
-        current_time = time.time()
-        if current_time - self.last_seek_time > 0.15:
-            percent = value / 1000.0
-            self.seek_requested.emit(percent)
-            self.last_seek_time = current_time
+        self.user_activity.emit() 
+        curr = time.time()
+        if curr - self.last_seek_time > 0.15:
+            self.seek_requested.emit(value / 1000.0)
+            self.last_seek_time = curr
 
     def on_seek(self):
-        percent = self.progress_slider.value() / 1000.0
-        self.seek_requested.emit(percent)
-        self.last_seek_time = time.time()
+        self.seek_requested.emit(self.progress_slider.value() / 1000.0)
 
-    def format_time(self, seconds):
-        seconds = int(seconds)
-        h = seconds // 3600
-        m = (seconds % 3600) // 60
-        s = seconds % 60
-        if h > 0:
-            return f"{h:02d}:{m:02d}:{s:02d}"
-        return f"{m:02d}:{s:02d}"
+    def format_time(self, s):
+        s = int(s)
+        return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}" if s >= 3600 else f"{(s%3600)//60:02d}:{s%60:02d}"
 
     def update_progress(self, current, total):
         if total > 0:
             self.curr_time_label.setText(self.format_time(current))
             self.total_time_label.setText(self.format_time(total))
             if not self.progress_slider.isSliderDown():
-                val = int((current / total) * 1000)
-                self.progress_slider.setValue(val)
+                self.progress_slider.setValue(int((current / total) * 1000))
+
+    # ==========================================
+    # 👑 物理拖拽引擎
+    # ==========================================
+    def enterEvent(self, event):
+        self.user_activity.emit() 
+        super().enterEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint()
+            self._user_dragged = True # 标记已经被拖动，不再自动居中
+            self.user_activity.emit()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        self.user_activity.emit() 
+        if self._drag_pos is not None:
+            delta = event.globalPosition().toPoint() - self._drag_pos
+            new_pos = self.pos() + delta
+            # 防止面板被拖出主窗口
+            if self.parentWidget():
+                parent_rect = self.parentWidget().rect()
+                new_x = max(0, min(new_pos.x(), parent_rect.width() - self.width()))
+                new_y = max(0, min(new_pos.y(), parent_rect.height() - self.height()))
+                new_pos = QPoint(new_x, new_y)
+            self.move(new_pos)
+            self._drag_pos = event.globalPosition().toPoint()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)

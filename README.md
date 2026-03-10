@@ -1,2 +1,2 @@
 # Pavo
-A minimalist, highly customizable video player for macOS.
+A video player for macOS.

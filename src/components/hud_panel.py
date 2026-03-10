@@ -31,6 +31,12 @@ class HUDPanel(QWidget):
         self.setGraphicsEffect(shadow)
 
         self.setStyleSheet("""
+            /* 👑 核心手术 1：清洗所有子组件，强制全部变透明，斩断黑色的继承 */
+            QWidget {
+                background-color: transparent;
+            }
+            
+            /* 👑 核心手术 2：给大底板重新刷上绝美的冰晶毛玻璃 */
             HUDPanel {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                                             stop:0 rgba(255, 255, 255, 30),
@@ -42,6 +48,7 @@ class HUDPanel(QWidget):
                 border-bottom: 1px solid rgba(255, 255, 255, 30);
                 border-radius: 30px;
             }
+            
             QPushButton {
                 background-color: transparent; border: none;
                 color: rgba(255, 255, 255, 210);
@@ -57,10 +64,13 @@ class HUDPanel(QWidget):
             QPushButton#SkipBtn { font-size: 20px; }
             QPushButton#MuteBtn { font-size: 13px; letter-spacing: 1px; }
             QPushButton#UtilBtn { font-size: 20px; }
+            
             QLabel {
+                background-color: transparent;
                 color: rgba(255, 255, 255, 210); font-size: 13px;
                 font-weight: 600; font-family: "Courier New", monospace; 
             }
+            
             QSlider::groove:horizontal { border-radius: 2px; height: 4px; background: rgba(0, 0, 0, 80); }
             QSlider::sub-page:horizontal { background: white; border-radius: 2px; }
             QSlider::handle:horizontal { width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; background: white; }

@@ -2,9 +2,10 @@ import sys
 import bootstrap
 bootstrap.setup_pavo_env()
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QGridLayout, QWidget
+# 👑 引入动画需要的核心组件
+from PySide6.QtWidgets import QApplication, QMainWindow, QGridLayout, QWidget, QGraphicsOpacityEffect
 from PySide6.QtGui import QSurfaceFormat
-from PySide6.QtCore import Qt, QTimer, QEvent # 👑 仅新增了 QEvent
+from PySide6.QtCore import Qt, QTimer, QEvent, QPropertyAnimation, QEasingCurve
 
 from engine import PavoEngine
 from video_widget import PavoVideoWidget
@@ -19,15 +20,19 @@ class PavoPlayer(QMainWindow):
 
         self.engine = PavoEngine()
         
-        # 👑 新增 1：设定 2 秒自动隐藏的定时炸弹
         self.hud_timer = QTimer(self)
         self.hud_timer.setInterval(2000)
         self.hud_timer.timeout.connect(self.hide_hud)
 
         self.init_ui()
 
-        # 👑 新增 2：给整个应用装上“隐形雷达”，捕捉鼠标移动，绝不干扰底层视频
         QApplication.instance().installEventFilter(self)
+        
+        # ==========================================
+        # 👑 修复 Bug：程序启动时，主动点燃第一发 2 秒倒计时炸弹！
+        # 这样无论鼠标初始在哪，UI 都会在 2 秒后乖乖按照呼吸效果隐藏
+        # ==========================================
+        self.hud_timer.start()
 
     def init_ui(self):
         self.central_widget = QWidget()
@@ -42,8 +47,21 @@ class PavoPlayer(QMainWindow):
         self.overlay = QWidget()
         self.overlay.setAttribute(Qt.WA_TranslucentBackground) 
         
-        # 👑 修改：删除了 overlay_layout，直接把 hud 作为 overlay 的绝对子组件，这样才能随意拖拽！
         self.hud = HUDPanel(self.overlay)
+
+        # ==========================================
+        # 👑 新增：给面板装配独立的透明度引擎
+        # ==========================================
+        self.opacity_effect = QGraphicsOpacityEffect(self.hud) # 只作用于 hud，不作用于全屏
+        self.opacity_effect.setOpacity(1.0)
+        self.hud.setGraphicsEffect(self.opacity_effect)
+
+        # 装配动画曲线
+        self.fade_anim = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.fade_anim.setDuration(250) # 250毫秒的丝滑过渡
+        self.fade_anim.setEasingCurve(QEasingCurve.InOutQuad)
+        self.fade_anim.setEndValue(1.0) # 初始化状态
+        self.fade_anim.finished.connect(self._on_fade_finished)
 
         self.main_layout.addWidget(self.overlay, 0, 0)
 
@@ -53,7 +71,6 @@ class PavoPlayer(QMainWindow):
         self.hud.mute_changed.connect(self.engine.set_mute)
         self.hud.seek_requested.connect(self.engine.seek_to_percent)
 
-        # 👑 新增 3：接收面板传来的鼠标操作信号，重置 2 秒隐藏倒计时
         if hasattr(self.hud, 'user_activity'):
             self.hud.user_activity.connect(self.wake_hud)
 
@@ -61,10 +78,8 @@ class PavoPlayer(QMainWindow):
         self.timer.timeout.connect(self.sync_progress)
         self.timer.start(500)
 
-    # 👑 新增 4：因为去掉了 Layout 布局，我们需要在窗口缩放时手动帮 UI 居中
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # 如果用户还没有手动拖拽过 UI，就自动帮它水平居中并在底部对齐
         if hasattr(self, 'hud') and not getattr(self.hud, '_user_dragged', False):
             hud_w = int(self.width() * 0.7)
             self.hud.setFixedWidth(hud_w)
@@ -76,35 +91,45 @@ class PavoPlayer(QMainWindow):
         current, total = self.engine.get_progress()
         self.hud.update_progress(current, total)
 
-    # ==========================================
-    # 👑 新增 5：沉浸式感知雷达处理中枢
-    # ==========================================
     def eventFilter(self, obj, event):
-        # 只要鼠标在窗口内滑动，就立刻唤醒 UI
         if event.type() == QEvent.MouseMove:
             self.wake_hud()
         return super().eventFilter(obj, event)
 
     def leaveEvent(self, event):
-        # 鼠标移出播放窗口外，立刻隐藏 UI
         self.hud_timer.stop()
         self.hide_hud()
         super().leaveEvent(event)
 
+    # ==========================================
+    # 👑 升级：带“防抖锁”的呼吸淡入淡出逻辑
+    # ==========================================
     def wake_hud(self):
-        if self.hud.isHidden():
+        # 【防抖锁】：只有在透明度未满，且没有在向1.0淡入时，才启动动画
+        if self.opacity_effect.opacity() < 1.0 and self.fade_anim.endValue() != 1.0:
             self.hud.show()
-        # 只要正在播放，就开始 2 秒倒计时
+            self.fade_anim.stop()
+            self.fade_anim.setStartValue(self.opacity_effect.opacity())
+            self.fade_anim.setEndValue(1.0) # 目标：完全显示
+            self.fade_anim.start()
+
+        # 无论如何都要重置自动隐藏的倒计时
         if getattr(self.hud, 'is_playing', True):
             self.hud_timer.start()
 
     def hide_hud(self):
-        if not self.hud.isHidden() and getattr(self.hud, 'is_playing', True):
+        # 【防抖锁】：只有在显示状态，且没有在向0.0淡出时，才启动动画
+        if not self.hud.isHidden() and getattr(self.hud, 'is_playing', True) and self.fade_anim.endValue() != 0.0:
+            self.fade_anim.stop()
+            self.fade_anim.setStartValue(self.opacity_effect.opacity())
+            self.fade_anim.setEndValue(0.0) # 目标：完全透明
+            self.fade_anim.start()
+
+    def _on_fade_finished(self):
+        # 物理隐藏：当淡出彻底完成时，隐藏组件，防止“看不见的面板”阻挡底层的鼠标点击
+        if self.fade_anim.endValue() == 0.0:
             self.hud.hide()
 
-# ==========================================
-# 启动块保持原封不动！
-# ==========================================
 if __name__ == "__main__":
     fmt = QSurfaceFormat()
     fmt.setVersion(4, 1)

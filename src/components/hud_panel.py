@@ -35,7 +35,6 @@ class HUDPanel(QWidget):
         self.last_seek_time = 0  
         self._drag_pos = None 
         self._user_dragged = False 
-        
         self.icons = {}
         self._preload_icons()
         self.init_ui()
@@ -63,100 +62,67 @@ class HUDPanel(QWidget):
 
     def init_ui(self):
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(30) 
-        shadow.setColor(QColor(0, 0, 0, 80)) 
-        shadow.setOffset(0, 5) 
+        shadow.setBlurRadius(40) 
+        shadow.setColor(QColor(0, 0, 0, 90)) 
+        shadow.setOffset(0, 8) 
         self.setGraphicsEffect(shadow)
 
         self.setStyleSheet("""
             QWidget { background-color: transparent; }
-            
-            /* 保持绝美高透光，稍微调整圆角以适配更窄的高度 */
             HUDPanel {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 rgba(255, 255, 255, 45),
-                                            stop:0.5 rgba(255, 255, 255, 25),
-                                            stop:1 rgba(255, 255, 255, 35));
-                border-top: 1px solid rgba(255, 255, 255, 90);
-                border-left: 1px solid rgba(255, 255, 255, 60);
-                border-right: 1px solid rgba(255, 255, 255, 60);
+                                            stop:0 rgba(255, 255, 255, 30),
+                                            stop:0.5 rgba(200, 200, 200, 15),
+                                            stop:1 rgba(150, 150, 150, 25));
+                border-top: 1px solid rgba(255, 255, 255, 160);
+                border-left: 1px solid rgba(255, 255, 255, 90);
+                border-right: 1px solid rgba(255, 255, 255, 90);
                 border-bottom: 1px solid rgba(255, 255, 255, 30);
-                border-radius: 20px; /* 圆角适配压缩后的高度 */
+                border-radius: 20px;
             }
-            
-            QPushButton {
-                background-color: transparent; border: none;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 40);
-            }
-            
+            QPushButton { background-color: transparent; border: none; border-radius: 8px; }
+            QPushButton:hover { background-color: rgba(255, 255, 255, 30); }
             QLabel {
-                color: rgba(255, 255, 255, 230); font-size: 12px;
-                font-weight: 500; 
+                color: rgba(255, 255, 255, 210); font-size: 13px; font-weight: 500; 
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif; 
                 font-variant-numeric: tabular-nums;
             }
-            
             QSlider { background: transparent; }
             
             /* 进度条：经典细竖条 */
-            QSlider#ProgressBar::groove:horizontal { 
-                border: none; height: 3px; border-radius: 1px; 
-                background: rgba(255, 255, 255, 40); 
-            }
-            QSlider#ProgressBar::sub-page:horizontal { 
-                background: rgba(255, 255, 255, 200); border-radius: 1px; 
-            }
+            QSlider#ProgressBar::groove:horizontal { border: none; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 40); }
+            QSlider#ProgressBar::sub-page:horizontal { background: rgba(255, 255, 255, 200); border-radius: 2px; }
             QSlider#ProgressBar::add-page:horizontal { background: transparent; }
-            
-            QSlider#ProgressBar::handle:horizontal { 
-                width: 3px; height: 12px; 
-                margin: -4px 0px; 
-                background: white; 
-                border-radius: 1px; 
-            }
-            QSlider#ProgressBar:hover::groove:horizontal { height: 5px; border-radius: 2px;}
+            QSlider#ProgressBar::handle:horizontal { width: 3px; height: 12px; margin: -4px 0px; background: white; border-radius: 1px; }
+            QSlider#ProgressBar:hover::groove:horizontal { height: 5px; border-radius: 3px;}
             QSlider#ProgressBar:hover::handle:horizontal { height: 14px; margin: -4px 0px;}
             
             /* 音量条：亮蓝色 */
-            QSlider#VolumeBar::groove:horizontal { 
-                border: none; height: 4px; border-radius: 2px; 
-                background: rgba(255, 255, 255, 40); 
-            }
-            QSlider#VolumeBar::sub-page:horizontal { 
-                background: #007AFF; 
-                border-radius: 2px; 
-            }
+            QSlider#VolumeBar::groove:horizontal { border: none; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 40); }
+            QSlider#VolumeBar::sub-page:horizontal { background: #007AFF; border-radius: 2px; }
             QSlider#VolumeBar::add-page:horizontal { background: transparent; }
-            
-            QSlider#VolumeBar::handle:horizontal { 
-                width: 12px; height: 12px; 
-                margin: -4px 0px; 
-                border-radius: 6px; 
-                background: white; 
-            }
+            QSlider#VolumeBar::handle:horizontal { width: 12px; height: 12px; margin: -4px 0px; border-radius: 6px; background: white; }
         """)
         
-        # 👑 极限压榨：高度压低到 72px！
-        self.setFixedHeight(72) 
+        # 👑 释放高度！设定为 100px，绝不压迫任何按钮
+        self.setFixedHeight(100) 
         main_v_layout = QVBoxLayout(self)
-        # 👑 极限压榨：上下边距压低，左右适中，两排之间的缝隙压到 2px
-        main_v_layout.setContentsMargins(20, 8, 20, 8)
-        main_v_layout.setSpacing(2) 
+        main_v_layout.setContentsMargins(25, 15, 25, 15)
+        main_v_layout.setSpacing(8)
 
-        # --- 第一排：控制按键 ---
+        # ================= 第一排：按键控制 =================
         btns_row = QHBoxLayout()
+        btns_row.setContentsMargins(0, 0, 0, 0)
+        
         self.vol_group = QWidget()
-        self.vol_group.setFixedWidth(140)
+        self.vol_group.setFixedWidth(150)
         vol_layout = QHBoxLayout(self.vol_group)
         vol_layout.setContentsMargins(0, 0, 0, 0)
         
         self.mute_btn = QPushButton()
         self.mute_btn.setIcon(self.icons['vol'])
-        self.mute_btn.setIconSize(QSize(16, 16)) 
-        self.mute_btn.setFixedSize(28, 28)
+        self.mute_btn.setIconSize(QSize(20, 20))
+        self.mute_btn.setFixedSize(30, 30)
         
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setObjectName("VolumeBar")
@@ -170,41 +136,43 @@ class HUDPanel(QWidget):
         
         self.center_btns = QWidget()
         center_layout = QHBoxLayout(self.center_btns)
-        center_layout.setSpacing(8) # 按钮靠得更紧一点
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        center_layout.setSpacing(15) 
         
         self.rewind_btn = QPushButton()
         self.rewind_btn.setIcon(self.icons['rewind'])
-        self.rewind_btn.setIconSize(QSize(22, 22))
-        self.rewind_btn.setFixedSize(32, 32)
+        self.rewind_btn.setIconSize(QSize(24, 24))
+        self.rewind_btn.setFixedSize(36, 36)
         
         self.play_btn = QPushButton()
         self.play_btn.setIcon(self.icons['pause']) 
-        self.play_btn.setIconSize(QSize(28, 28))
-        self.play_btn.setFixedSize(40, 40) 
+        self.play_btn.setIconSize(QSize(32, 32))
+        self.play_btn.setFixedSize(44, 44) 
         
         self.forward_btn = QPushButton()
         self.forward_btn.setIcon(self.icons['forward'])
-        self.forward_btn.setIconSize(QSize(22, 22))
-        self.forward_btn.setFixedSize(32, 32)
+        self.forward_btn.setIconSize(QSize(24, 24))
+        self.forward_btn.setFixedSize(36, 36)
         
         center_layout.addWidget(self.rewind_btn)
         center_layout.addWidget(self.play_btn)
         center_layout.addWidget(self.forward_btn)
         
         self.right_utils = QWidget()
-        self.right_utils.setFixedWidth(140)
+        self.right_utils.setFixedWidth(150)
         util_layout = QHBoxLayout(self.right_utils)
-        util_layout.setAlignment(Qt.AlignRight)
+        util_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        util_layout.setContentsMargins(0, 0, 0, 0)
         
         self.settings_btn = QPushButton()
         self.settings_btn.setIcon(self.icons['settings'])
-        self.settings_btn.setIconSize(QSize(18, 18))
-        self.settings_btn.setFixedSize(28, 28)
+        self.settings_btn.setIconSize(QSize(20, 20))
+        self.settings_btn.setFixedSize(30, 30)
         
         self.fullscreen_btn = QPushButton()
         self.fullscreen_btn.setIcon(self.icons['fullscreen'])
-        self.fullscreen_btn.setIconSize(QSize(18, 18))
-        self.fullscreen_btn.setFixedSize(28, 28)
+        self.fullscreen_btn.setIconSize(QSize(20, 20))
+        self.fullscreen_btn.setFixedSize(30, 30)
         
         util_layout.addWidget(self.settings_btn)
         util_layout.addWidget(self.fullscreen_btn)
@@ -215,10 +183,17 @@ class HUDPanel(QWidget):
         btns_row.addStretch()
         btns_row.addWidget(self.right_utils)
         
-        # --- 第二排：时间和进度条 ---
+        # ================= 第二排：进度条和时间 =================
         time_row = QHBoxLayout()
+        time_row.setContentsMargins(0, 0, 0, 0)
+        time_row.setSpacing(10)
+        
         self.curr_time_label = QLabel("00:00")
         self.total_time_label = QLabel("00:00")
+        self.curr_time_label.setFixedWidth(42)
+        self.curr_time_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.total_time_label.setFixedWidth(42)
+        self.total_time_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         
         self.progress_slider = QSlider(Qt.Horizontal)
         self.progress_slider.setObjectName("ProgressBar")
@@ -231,10 +206,11 @@ class HUDPanel(QWidget):
         time_row.addWidget(self.progress_slider)
         time_row.addWidget(self.total_time_label)
         
+        # 👑 翻转布局：按键在上，时间在下
         main_v_layout.addLayout(btns_row)
         main_v_layout.addLayout(time_row)
 
-        # --- 连线区 ---
+        # ================= 连线区 =================
         self.rewind_btn.clicked.connect(lambda: self.skip_requested.emit(-10))
         self.forward_btn.clicked.connect(lambda: self.skip_requested.emit(10))
         self.play_btn.clicked.connect(self.toggle_play_ui)

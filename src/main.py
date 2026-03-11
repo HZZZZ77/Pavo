@@ -80,12 +80,34 @@ class PavoPlayer(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, 'hud') and not getattr(self.hud, '_user_dragged', False):
-            hud_w = int(self.width() * 0.7)
+        
+        if hasattr(self, 'hud'):
+            # 👑 1. 无论是否被拖拽过，UI 的“宽度”都必须保持绝对的响应式！
+            # 保证它最大 520px，但在极小窗口下也能自动缩窄，绝不溢出
+            hud_w = min(520, self.width() - 40)
             self.hud.setFixedWidth(hud_w)
-            x = (self.width() - hud_w) // 2
-            y = self.height() - self.hud.height() - 40
-            self.hud.move(x, y)
+            
+            # 👑 2. 处理“位置”逻辑
+            if not getattr(self.hud, '_user_dragged', False):
+                # 状态 A：没拖拽过，乖乖在底部居中
+                x = (self.width() - hud_w) // 2
+                y = self.height() - self.hud.height() - 40
+                self.hud.move(x, y)
+            else:
+                # 状态 B：用户手动拖拽过。
+                # 尊重用户放置的位置，但是加上“动态空气墙”，防止窗口缩小时把 UI 吞掉！
+                current_x = self.hud.x()
+                current_y = self.hud.y()
+                
+                # 计算当前窗口的安全边界
+                max_x = self.width() - hud_w
+                max_y = self.height() - self.hud.height()
+                
+                # 强制修正坐标：绝不小于0（左上角），也绝不大于最大边界（右下角）
+                new_x = max(0, min(current_x, max_x))
+                new_y = max(0, min(current_y, max_y))
+                
+                self.hud.move(new_x, new_y)
 
     def sync_progress(self):
         current, total = self.engine.get_progress()

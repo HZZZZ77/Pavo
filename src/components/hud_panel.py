@@ -1,7 +1,22 @@
 import time
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QGraphicsDropShadowEffect, QLabel
-from PySide6.QtCore import Qt, Signal, QPoint
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, Signal, QPoint, QByteArray, QSize
+from PySide6.QtGui import QColor, QPixmap, QPainter, QIcon
+
+try:
+    from PySide6.QtSvg import QSvgRenderer
+    HAS_SVG = True
+except ImportError:
+    HAS_SVG = False
+
+SVG_PLAY = '<svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>'
+SVG_PAUSE = '<svg viewBox="0 0 24 24" fill="white"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'
+SVG_REWIND = '<svg viewBox="0 0 24 24" fill="white"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>'
+SVG_FORWARD = '<svg viewBox="0 0 24 24" fill="white"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>'
+SVG_VOL = '<svg viewBox="0 0 24 24" fill="white"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>'
+SVG_MUTE = '<svg viewBox="0 0 24 24" fill="#ff5555"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>'
+SVG_FULLSCREEN = '<svg viewBox="0 0 24 24" fill="white"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>'
+SVG_SETTINGS = '<svg viewBox="0 0 24 24" fill="white"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>'
 
 class HUDPanel(QWidget):
     play_state_changed = Signal(bool)
@@ -10,7 +25,6 @@ class HUDPanel(QWidget):
     seek_requested = Signal(float)
     skip_requested = Signal(int)
     fullscreen_requested = Signal()
-    # 👑 存活信号
     user_activity = Signal() 
 
     def __init__(self, parent=None):
@@ -20,120 +34,178 @@ class HUDPanel(QWidget):
         self.is_muted = False      
         self.last_seek_time = 0  
         self._drag_pos = None 
-        self._user_dragged = False # 记录用户是否手动拖拽过
+        self._user_dragged = False 
+        
+        self.icons = {}
+        self._preload_icons()
         self.init_ui()
+
+    def _create_svg_icon(self, svg_string, size=64):
+        if not HAS_SVG: return QIcon()
+        renderer = QSvgRenderer(QByteArray(svg_string.encode('utf-8')))
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        renderer.render(painter)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _preload_icons(self):
+        self.icons['play'] = self._create_svg_icon(SVG_PLAY)
+        self.icons['pause'] = self._create_svg_icon(SVG_PAUSE)
+        self.icons['rewind'] = self._create_svg_icon(SVG_REWIND)
+        self.icons['forward'] = self._create_svg_icon(SVG_FORWARD)
+        self.icons['vol'] = self._create_svg_icon(SVG_VOL)
+        self.icons['mute'] = self._create_svg_icon(SVG_MUTE)
+        self.icons['fullscreen'] = self._create_svg_icon(SVG_FULLSCREEN)
+        self.icons['settings'] = self._create_svg_icon(SVG_SETTINGS)
 
     def init_ui(self):
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(40) 
-        shadow.setColor(QColor(0, 0, 0, 180)) 
-        shadow.setOffset(0, 15) 
+        shadow.setBlurRadius(30) 
+        shadow.setColor(QColor(0, 0, 0, 80)) 
+        shadow.setOffset(0, 5) 
         self.setGraphicsEffect(shadow)
 
         self.setStyleSheet("""
-            /* 👑 核心手术 1：清洗所有子组件，强制全部变透明，斩断黑色的继承 */
-            QWidget {
-                background-color: transparent;
-            }
+            QWidget { background-color: transparent; }
             
-            /* 👑 核心手术 2：给大底板重新刷上绝美的冰晶毛玻璃 */
+            /* 保持绝美高透光，稍微调整圆角以适配更窄的高度 */
             HUDPanel {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 rgba(255, 255, 255, 30),
-                                            stop:0.5 rgba(200, 200, 200, 15),
-                                            stop:1 rgba(150, 150, 150, 25));
-                border-top: 1px solid rgba(255, 255, 255, 160);
-                border-left: 1px solid rgba(255, 255, 255, 90);
-                border-right: 1px solid rgba(255, 255, 255, 90);
+                                            stop:0 rgba(255, 255, 255, 45),
+                                            stop:0.5 rgba(255, 255, 255, 25),
+                                            stop:1 rgba(255, 255, 255, 35));
+                border-top: 1px solid rgba(255, 255, 255, 90);
+                border-left: 1px solid rgba(255, 255, 255, 60);
+                border-right: 1px solid rgba(255, 255, 255, 60);
                 border-bottom: 1px solid rgba(255, 255, 255, 30);
-                border-radius: 30px;
+                border-radius: 20px; /* 圆角适配压缩后的高度 */
             }
             
             QPushButton {
                 background-color: transparent; border: none;
-                color: rgba(255, 255, 255, 210);
-                font-family: -apple-system, "SF Pro Rounded", sans-serif;
-                font-weight: 900;
+                border-radius: 6px;
             }
             QPushButton:hover {
-                color: rgba(255, 255, 255, 255);
-                background-color: rgba(255, 255, 255, 20);
-                border-radius: 20px;
+                background-color: rgba(255, 255, 255, 40);
             }
-            QPushButton#PlayBtn { font-size: 32px; }
-            QPushButton#SkipBtn { font-size: 20px; }
-            QPushButton#MuteBtn { font-size: 13px; letter-spacing: 1px; }
-            QPushButton#UtilBtn { font-size: 20px; }
             
             QLabel {
-                background-color: transparent;
-                color: rgba(255, 255, 255, 210); font-size: 13px;
-                font-weight: 600; font-family: "Courier New", monospace; 
+                color: rgba(255, 255, 255, 230); font-size: 12px;
+                font-weight: 500; 
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif; 
+                font-variant-numeric: tabular-nums;
             }
             
-            QSlider::groove:horizontal { border-radius: 2px; height: 4px; background: rgba(0, 0, 0, 80); }
-            QSlider::sub-page:horizontal { background: white; border-radius: 2px; }
-            QSlider::handle:horizontal { width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; background: white; }
-            QSlider::handle:horizontal:hover { width: 14px; height: 14px; margin: -5px -1px; border-radius: 7px; }
+            QSlider { background: transparent; }
+            
+            /* 进度条：经典细竖条 */
+            QSlider#ProgressBar::groove:horizontal { 
+                border: none; height: 3px; border-radius: 1px; 
+                background: rgba(255, 255, 255, 40); 
+            }
+            QSlider#ProgressBar::sub-page:horizontal { 
+                background: rgba(255, 255, 255, 200); border-radius: 1px; 
+            }
+            QSlider#ProgressBar::add-page:horizontal { background: transparent; }
+            
+            QSlider#ProgressBar::handle:horizontal { 
+                width: 3px; height: 12px; 
+                margin: -4px 0px; 
+                background: white; 
+                border-radius: 1px; 
+            }
+            QSlider#ProgressBar:hover::groove:horizontal { height: 5px; border-radius: 2px;}
+            QSlider#ProgressBar:hover::handle:horizontal { height: 14px; margin: -4px 0px;}
+            
+            /* 音量条：亮蓝色 */
+            QSlider#VolumeBar::groove:horizontal { 
+                border: none; height: 4px; border-radius: 2px; 
+                background: rgba(255, 255, 255, 40); 
+            }
+            QSlider#VolumeBar::sub-page:horizontal { 
+                background: #007AFF; 
+                border-radius: 2px; 
+            }
+            QSlider#VolumeBar::add-page:horizontal { background: transparent; }
+            
+            QSlider#VolumeBar::handle:horizontal { 
+                width: 12px; height: 12px; 
+                margin: -4px 0px; 
+                border-radius: 6px; 
+                background: white; 
+            }
         """)
-        self.setFixedHeight(105) 
         
+        # 👑 极限压榨：高度压低到 72px！
+        self.setFixedHeight(72) 
         main_v_layout = QVBoxLayout(self)
-        main_v_layout.setContentsMargins(30, 15, 30, 15)
-        main_v_layout.setSpacing(5)
+        # 👑 极限压榨：上下边距压低，左右适中，两排之间的缝隙压到 2px
+        main_v_layout.setContentsMargins(20, 8, 20, 8)
+        main_v_layout.setSpacing(2) 
 
-        time_row = QHBoxLayout()
-        self.curr_time_label = QLabel("00:00")
-        self.total_time_label = QLabel("00:00")
-        self.progress_slider = QSlider(Qt.Horizontal)
-        self.progress_slider.setObjectName("ProgressBar")
-        self.progress_slider.setRange(0, 1000)
-        self.progress_slider.sliderMoved.connect(self.on_slider_moved)
-        self.progress_slider.sliderReleased.connect(self.on_seek)
-        
-        time_row.addWidget(self.curr_time_label)
-        time_row.addWidget(self.progress_slider)
-        time_row.addWidget(self.total_time_label)
-        main_v_layout.addLayout(time_row)
-
+        # --- 第一排：控制按键 ---
         btns_row = QHBoxLayout()
         self.vol_group = QWidget()
-        self.vol_group.setFixedWidth(150)
+        self.vol_group.setFixedWidth(140)
         vol_layout = QHBoxLayout(self.vol_group)
         vol_layout.setContentsMargins(0, 0, 0, 0)
-        self.mute_btn = QPushButton("VOL")
-        self.mute_btn.setObjectName("MuteBtn")
+        
+        self.mute_btn = QPushButton()
+        self.mute_btn.setIcon(self.icons['vol'])
+        self.mute_btn.setIconSize(QSize(16, 16)) 
+        self.mute_btn.setFixedSize(28, 28)
+        
         self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider.setObjectName("VolumeBar")
         self.vol_slider.setRange(0, 100)
         self.vol_slider.setValue(100)
+        self.vol_slider.setFixedHeight(16) 
         self.vol_slider.valueChanged.connect(self.volume_changed.emit)
+        
         vol_layout.addWidget(self.mute_btn)
         vol_layout.addWidget(self.vol_slider)
         
         self.center_btns = QWidget()
         center_layout = QHBoxLayout(self.center_btns)
-        center_layout.setSpacing(10)
-        self.rewind_btn = QPushButton("◀◀")
-        self.rewind_btn.setObjectName("SkipBtn")
-        self.rewind_btn.setFixedSize(45, 45)
-        self.play_btn = QPushButton("▶")
-        self.play_btn.setObjectName("PlayBtn")
-        self.play_btn.setFixedSize(55, 55) 
-        self.forward_btn = QPushButton("▶▶")
-        self.forward_btn.setObjectName("SkipBtn")
-        self.forward_btn.setFixedSize(45, 45)
+        center_layout.setSpacing(8) # 按钮靠得更紧一点
+        
+        self.rewind_btn = QPushButton()
+        self.rewind_btn.setIcon(self.icons['rewind'])
+        self.rewind_btn.setIconSize(QSize(22, 22))
+        self.rewind_btn.setFixedSize(32, 32)
+        
+        self.play_btn = QPushButton()
+        self.play_btn.setIcon(self.icons['pause']) 
+        self.play_btn.setIconSize(QSize(28, 28))
+        self.play_btn.setFixedSize(40, 40) 
+        
+        self.forward_btn = QPushButton()
+        self.forward_btn.setIcon(self.icons['forward'])
+        self.forward_btn.setIconSize(QSize(22, 22))
+        self.forward_btn.setFixedSize(32, 32)
+        
         center_layout.addWidget(self.rewind_btn)
         center_layout.addWidget(self.play_btn)
         center_layout.addWidget(self.forward_btn)
         
         self.right_utils = QWidget()
-        self.right_utils.setFixedWidth(150)
+        self.right_utils.setFixedWidth(140)
         util_layout = QHBoxLayout(self.right_utils)
         util_layout.setAlignment(Qt.AlignRight)
-        self.settings_btn = QPushButton("•••")
-        self.settings_btn.setObjectName("UtilBtn")
-        self.fullscreen_btn = QPushButton("⛶")
-        self.fullscreen_btn.setObjectName("UtilBtn")
+        
+        self.settings_btn = QPushButton()
+        self.settings_btn.setIcon(self.icons['settings'])
+        self.settings_btn.setIconSize(QSize(18, 18))
+        self.settings_btn.setFixedSize(28, 28)
+        
+        self.fullscreen_btn = QPushButton()
+        self.fullscreen_btn.setIcon(self.icons['fullscreen'])
+        self.fullscreen_btn.setIconSize(QSize(18, 18))
+        self.fullscreen_btn.setFixedSize(28, 28)
+        
         util_layout.addWidget(self.settings_btn)
         util_layout.addWidget(self.fullscreen_btn)
 
@@ -142,8 +214,27 @@ class HUDPanel(QWidget):
         btns_row.addWidget(self.center_btns)
         btns_row.addStretch()
         btns_row.addWidget(self.right_utils)
+        
+        # --- 第二排：时间和进度条 ---
+        time_row = QHBoxLayout()
+        self.curr_time_label = QLabel("00:00")
+        self.total_time_label = QLabel("00:00")
+        
+        self.progress_slider = QSlider(Qt.Horizontal)
+        self.progress_slider.setObjectName("ProgressBar")
+        self.progress_slider.setRange(0, 1000)
+        self.progress_slider.setFixedHeight(16)
+        self.progress_slider.sliderMoved.connect(self.on_slider_moved)
+        self.progress_slider.sliderReleased.connect(self.on_seek)
+        
+        time_row.addWidget(self.curr_time_label)
+        time_row.addWidget(self.progress_slider)
+        time_row.addWidget(self.total_time_label)
+        
         main_v_layout.addLayout(btns_row)
+        main_v_layout.addLayout(time_row)
 
+        # --- 连线区 ---
         self.rewind_btn.clicked.connect(lambda: self.skip_requested.emit(-10))
         self.forward_btn.clicked.connect(lambda: self.skip_requested.emit(10))
         self.play_btn.clicked.connect(self.toggle_play_ui)
@@ -152,13 +243,12 @@ class HUDPanel(QWidget):
 
     def toggle_play_ui(self):
         self.is_playing = not self.is_playing
-        self.play_btn.setText("▶" if not self.is_playing else "❙❙") 
+        self.play_btn.setIcon(self.icons['pause'] if self.is_playing else self.icons['play'])
         self.play_state_changed.emit(self.is_playing)
 
     def toggle_mute_ui(self):
         self.is_muted = not self.is_muted
-        self.mute_btn.setText("MUT" if self.is_muted else "VOL")
-        self.mute_btn.setStyleSheet("color: #ff5555;" if self.is_muted else "")
+        self.mute_btn.setIcon(self.icons['mute'] if self.is_muted else self.icons['vol'])
         self.mute_changed.emit(self.is_muted)
 
     def on_slider_moved(self, value):
@@ -182,9 +272,6 @@ class HUDPanel(QWidget):
             if not self.progress_slider.isSliderDown():
                 self.progress_slider.setValue(int((current / total) * 1000))
 
-    # ==========================================
-    # 👑 物理拖拽引擎
-    # ==========================================
     def enterEvent(self, event):
         self.user_activity.emit() 
         super().enterEvent(event)
@@ -192,7 +279,7 @@ class HUDPanel(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._drag_pos = event.globalPosition().toPoint()
-            self._user_dragged = True # 标记已经被拖动，不再自动居中
+            self._user_dragged = True 
             self.user_activity.emit()
         super().mousePressEvent(event)
 
@@ -201,7 +288,6 @@ class HUDPanel(QWidget):
         if self._drag_pos is not None:
             delta = event.globalPosition().toPoint() - self._drag_pos
             new_pos = self.pos() + delta
-            # 防止面板被拖出主窗口
             if self.parentWidget():
                 parent_rect = self.parentWidget().rect()
                 new_x = max(0, min(new_pos.x(), parent_rect.width() - self.width()))

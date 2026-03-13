@@ -1,11 +1,12 @@
+import os
 import sys
 import bootstrap
 bootstrap.setup_pavo_env()
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QGridLayout, QWidget, 
-                             QGraphicsOpacityEffect, QMenu)
+                             QGraphicsOpacityEffect, QMenu, QLabel)
 from PySide6.QtGui import QSurfaceFormat, QAction, QKeyEvent
-from PySide6.QtCore import Qt, QTimer, QEvent, QPropertyAnimation, QEasingCurve, QPoint
+from PySide6.QtCore import Qt, QTimer, QEvent, QPropertyAnimation, QEasingCurve, QPoint, QUrl
 
 from engine import PavoEngine
 from video_widget import PavoVideoWidget
@@ -17,6 +18,9 @@ class PavoPlayer(QMainWindow):
         self.setWindowTitle("Pavo") 
         self.resize(1000, 600)
         self.setStyleSheet("background-color: black;")
+        
+        # 兜底：主窗口也开启拖拽接收
+        self.setAcceptDrops(True)
 
         self.engine = PavoEngine()
         
@@ -36,19 +40,34 @@ class PavoPlayer(QMainWindow):
         self.main_layout = QGridLayout(self.central_widget)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 视频画布在最底层
         self.video_canvas = PavoVideoWidget(self.engine)
         self.main_layout.addWidget(self.video_canvas, 0, 0)
 
-        # ==========================================
-        # 👑 核心修复：彻底废除全屏的透明 overlay 护盾！
-        # 直接让 hud 成为 central_widget 的浮动子组件
-        # ==========================================
         self.hud = HUDPanel(self.central_widget)
-        
-        # 强制将面板提升到最高层级（悬浮于画布之上）
         self.hud.raise_()
 
+        # ==========================================
+        # 👑 顶部 OSD 信息栏 (显示文件名/拖拽提示)
+        # ==========================================
+        self.top_osd = QLabel(self.central_widget)
+        self.top_osd.setAlignment(Qt.AlignCenter)
+        self.top_osd.setText("✨ 请将视频文件拖拽至此播放")
+        self.top_osd.setStyleSheet("""
+            QLabel {
+                background-color: rgba(40, 40, 40, 180);
+                color: rgba(255, 255, 255, 230);
+                border: 1px solid rgba(255, 255, 255, 30);
+                border-radius: 12px;
+                padding: 8px 20px;
+                font-size: 14px;
+                font-weight: 500;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            }
+        """)
+        self.top_osd.adjustSize()
+        self.top_osd.raise_()
+
+        # --- 底部 HUD 的动画引擎 ---
         self.opacity_effect = QGraphicsOpacityEffect(self.hud)
         self.opacity_effect.setOpacity(1.0)
         self.hud.setGraphicsEffect(self.opacity_effect)
@@ -59,9 +78,20 @@ class PavoPlayer(QMainWindow):
         self.fade_anim.setEndValue(1.0)
         self.fade_anim.finished.connect(self._on_fade_finished)
 
+        # --- 顶部 OSD 的同步动画引擎 ---
+        self.osd_opacity_effect = QGraphicsOpacityEffect(self.top_osd)
+        self.osd_opacity_effect.setOpacity(1.0)
+        self.top_osd.setGraphicsEffect(self.osd_opacity_effect)
+
+        self.osd_fade_anim = QPropertyAnimation(self.osd_opacity_effect, b"opacity")
+        self.osd_fade_anim.setDuration(250)
+        self.osd_fade_anim.setEasingCurve(QEasingCurve.InOutQuad)
+        self.osd_fade_anim.setEndValue(1.0)
+
         # ==========================================
-        # 👑 HUD 控制连线
+        # 👑 信号与槽连线
         # ==========================================
+        # 1. HUD 控制连线
         self.hud.play_state_changed.connect(self.engine.set_playing)
         self.hud.volume_changed.connect(self.engine.set_volume)
         self.hud.mute_changed.connect(self.engine.set_mute)
@@ -76,27 +106,64 @@ class PavoPlayer(QMainWindow):
         if hasattr(self.hud, 'user_activity'):
             self.hud.user_activity.connect(self.wake_hud)
 
-        # ==========================================
-        # 👑 画布手势连线：现在它终于能收到信号了！
-        # ==========================================
+        # 2. 画布交互连线 (单双击 + 拖拽接受)
         if hasattr(self.video_canvas, 'clicked'):
             self.video_canvas.clicked.connect(self.hud.toggle_play_ui)
         if hasattr(self.video_canvas, 'double_clicked'):
             self.video_canvas.double_clicked.connect(self.toggle_fullscreen)
+        
+        # 👑 最核心的一步：接住画布发来的拖拽路径！
+        if hasattr(self.video_canvas, 'file_dropped'):
+            self.video_canvas.file_dropped.connect(self.load_local_video)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.sync_progress)
         self.timer.start(500)
 
+    # ==========================================
+    # 👑 拖拽播放核心逻辑
+    # ==========================================
+    def dragEnterEvent(self, event):
+        # 兜底机制：如果拖拽事件漏到了主窗口，也接收它
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        # 兜底机制
+        urls = event.mimeData().urls()
+        if urls:
+            file_path = urls[0].toLocalFile()
+            self.load_local_video(file_path)
+
+    def load_local_video(self, file_path):
+        """加载本地视频并更新 UI"""
+        # 提取文件名
+        filename = os.path.basename(file_path)
+        self.top_osd.setText(f"正在播放：{filename}")
+        self.top_osd.adjustSize()
+        self.resizeEvent(None)  # 重新居中 OSD
+
+        # 唤醒面板展示信息
+        self.wake_hud()
+        
+        # 通知引擎播放新视频！
+        self.engine.play(file_path)
+
+        # 确保播放按钮状态重置为“暂停”图标 (表示正在播放)
+        if hasattr(self.hud, 'is_playing'):
+            self.hud.is_playing = True
+            self.hud.play_btn.setIcon(self.hud.icons['pause'])
+
+    # ==========================================
+    # 基础功能逻辑
+    # ==========================================
     def on_skip(self, seconds):
-        """处理前后跳转逻辑"""
         curr, total = self.engine.get_progress()
         if total <= 0: return
         new_time = max(0, min(total, curr + seconds))
         self.engine.seek_to_percent(new_time / total)
 
     def toggle_fullscreen(self):
-        """切换全屏状态"""
         if self.isFullScreen():
             self.showNormal()
         else:
@@ -104,7 +171,6 @@ class PavoPlayer(QMainWindow):
         self.resizeEvent(None)
 
     def keyPressEvent(self, event: QKeyEvent):
-        """键盘快捷键支持"""
         if event.key() == Qt.Key_Escape and self.isFullScreen():
             self.showNormal()
         elif event.key() == Qt.Key_Space:
@@ -112,7 +178,6 @@ class PavoPlayer(QMainWindow):
         super().keyPressEvent(event)
 
     def show_settings_menu(self):
-        """点击三个点弹出倍速菜单"""
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
@@ -152,6 +217,14 @@ class PavoPlayer(QMainWindow):
 
     def resizeEvent(self, event):
         if event: super().resizeEvent(event)
+        
+        # 动态居中顶部 OSD
+        if hasattr(self, 'top_osd'):
+            osd_w = self.top_osd.width()
+            osd_x = (self.width() - osd_w) // 2
+            self.top_osd.move(osd_x, 30)
+
+        # 动态响应底部 HUD
         if hasattr(self, 'hud'):
             hud_w = min(520, self.width() - 40)
             self.hud.setFixedWidth(hud_w)
@@ -180,13 +253,24 @@ class PavoPlayer(QMainWindow):
         self.hide_hud()
         super().leaveEvent(event)
 
+    # ==========================================
+    # 👑 同步呼吸动画：底部面板与顶部 OSD 同进同退
+    # ==========================================
     def wake_hud(self):
         if self.opacity_effect.opacity() < 1.0 and self.fade_anim.endValue() != 1.0:
             self.hud.show()
+            self.top_osd.show()
+
             self.fade_anim.stop()
             self.fade_anim.setStartValue(self.opacity_effect.opacity())
             self.fade_anim.setEndValue(1.0)
             self.fade_anim.start()
+
+            self.osd_fade_anim.stop()
+            self.osd_fade_anim.setStartValue(self.osd_opacity_effect.opacity())
+            self.osd_fade_anim.setEndValue(1.0)
+            self.osd_fade_anim.start()
+
         if getattr(self.hud, 'is_playing', True):
             self.hud_timer.start()
 
@@ -197,9 +281,15 @@ class PavoPlayer(QMainWindow):
             self.fade_anim.setEndValue(0.0)
             self.fade_anim.start()
 
+            self.osd_fade_anim.stop()
+            self.osd_fade_anim.setStartValue(self.osd_opacity_effect.opacity())
+            self.osd_fade_anim.setEndValue(0.0)
+            self.osd_fade_anim.start()
+
     def _on_fade_finished(self):
         if self.fade_anim.endValue() == 0.0:
             self.hud.hide()
+            self.top_osd.hide()
 
 if __name__ == "__main__":
     fmt = QSurfaceFormat()

@@ -19,6 +19,8 @@ class PavoEngine:
                 demuxer_max_bytes="100M",       # 向前预读最大 100MB
                 demuxer_max_back_bytes="50M"    # 向后保留最大 50MB (防回退卡顿)
             )
+            # 👑 新增：初始化记录倍速状态
+            self.playback_speed = 1.0
             print(f"[Engine] Initialization successful. (mpv version: {self.player.mpv_version})")
         except Exception as e:
             print(f"[Engine] Error: Initialization failed - {e}")
@@ -42,6 +44,18 @@ class PavoEngine:
     def set_mute(self, is_mute: bool):
         if self.player:
             self.player.mute = is_mute
+
+    # ==========================================
+    # 👑 新增：倍速控制方法 (变速箱)
+    # ==========================================
+    def set_speed(self, speed: float):
+        if self.player:
+            try:
+                self.player.speed = speed
+                self.playback_speed = speed
+                print(f"[Engine] Playback speed set to: {speed}x")
+            except Exception as e:
+                print(f"[Engine] Error setting speed: {e}")
 
     def get_progress(self):
         try:

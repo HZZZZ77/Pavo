@@ -1,11 +1,15 @@
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtGui import QOpenGLContext
-from PySide6.QtCore import Qt, QMetaObject
+from PySide6.QtCore import Qt, QMetaObject, Signal, QTimer
+from PySide6.QtWidgets import QApplication
 import mpv
 import ctypes
 import traceback
 
 class PavoVideoWidget(QOpenGLWidget):
+    clicked = Signal()
+    double_clicked = Signal()
+
     def __init__(self, engine, parent=None):
         super().__init__(parent)
         self.engine = engine
@@ -13,6 +17,14 @@ class PavoVideoWidget(QOpenGLWidget):
         self._get_proc_addr_c = None 
         
         self.setStyleSheet("background-color: #000000;")
+        
+        # ==========================================
+        # 👑 引入极其严苛的“状态机”计数器
+        # ==========================================
+        self._click_count = 0
+        self._click_timer = QTimer(self)
+        self._click_timer.setSingleShot(True)
+        self._click_timer.timeout.connect(self._handle_click_timeout)
 
     def initializeGL(self):
         print("[VideoWidget] initializeGL triggered. Setting up OpenGL context...")
@@ -71,3 +83,41 @@ class PavoVideoWidget(QOpenGLWidget):
 
     def on_mpv_update(self):
         QMetaObject.invokeMethod(self, "update", Qt.QueuedConnection)
+
+    # ==========================================
+    # 👑 绝对互斥的状态机逻辑
+    # ==========================================
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._click_count += 1
+            
+            if self._click_count == 1:
+                # 记录第一下点击，启动倒计时
+                delay = QApplication.doubleClickInterval()
+                self._click_timer.start(delay if delay > 0 else 300)
+                
+            elif self._click_count == 2:
+                # 在倒计时内迎来了第二下点击！
+                self._click_timer.stop()
+                self._click_count = 0  # 状态彻底清零！这是关键！
+                self.double_clicked.emit()
+                
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        # 强制将 Qt 原生的双击事件映射为我们的“按下事件”，交给状态机统一收编防错！
+        self.mousePressEvent(event)
+
+    def _handle_click_timeout(self):
+        # 【终极防抖锁】：就算定时器意外触发，只要发现状态被清零了，就绝对不执行暂停！
+        if self._click_count == 1:
+            self.clicked.emit()
+        
+        # 无论如何，重置状态，迎接下一轮交互
+        self._click_count = 0
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Space:
+            event.ignore()
+        else:
+            super().keyPressEvent(event)

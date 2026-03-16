@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 import threading
+import shutil
 
 import bootstrap
 bootstrap.setup_pavo_env()
@@ -63,8 +64,27 @@ class PavoEngine(QObject):
 
         def _extract():
             try:
+                ffmpeg_cmd = None
+                
+                # 👑 核心魔法：PyInstaller 打包后的专属路径寻址 (sys._MEIPASS)
+                if hasattr(sys, '_MEIPASS'):
+                    bundled_ffmpeg = os.path.join(sys._MEIPASS, 'ffmpeg')
+                    if os.path.exists(bundled_ffmpeg):
+                        ffmpeg_cmd = bundled_ffmpeg
+                
+                # 如果没打包（本地写代码测试时），用系统里的 ffmpeg
+                if not ffmpeg_cmd:
+                    ffmpeg_cmd = shutil.which('ffmpeg')
+                    if not ffmpeg_cmd:
+                        if os.path.exists('/opt/homebrew/bin/ffmpeg'):
+                            ffmpeg_cmd = '/opt/homebrew/bin/ffmpeg'
+                        elif os.path.exists('/usr/local/bin/ffmpeg'):
+                            ffmpeg_cmd = '/usr/local/bin/ffmpeg'
+                        else:
+                            ffmpeg_cmd = 'ffmpeg'
+                            
                 cmd = [
-                    'ffmpeg', '-y', '-ss', str(time_key), '-i', self.current_media_path,
+                    ffmpeg_cmd, '-y', '-ss', str(time_key), '-i', self.current_media_path,
                     '-vframes', '1', '-q:v', '2', '-vf', 'scale=160:-1', '-f', 'image2', 'pipe:1'
                 ]
                 startupinfo = None
@@ -78,7 +98,9 @@ class PavoEngine(QObject):
                 if out:
                     self.thumb_cache[time_key] = out
                     self.thumbnail_ready.emit(time_key, out)
-            except: pass
+            except Exception as e:
+                print(f"[Engine] Extract error: {e}")
+                
         threading.Thread(target=_extract, daemon=True).start()
 
     def set_playing(self, is_playing: bool):

@@ -4,8 +4,10 @@ import bootstrap
 bootstrap.setup_pavo_env()
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QGridLayout, QWidget, 
-                             QGraphicsOpacityEffect, QMenu, QLabel)
-from PySide6.QtGui import QSurfaceFormat, QAction, QKeyEvent
+                             QGraphicsOpacityEffect, QMenu, QLabel, QVBoxLayout,
+                             QGraphicsDropShadowEffect)
+# 👑 新增：引入 QPainter 和 QPainterPath 用于精美绘制圆角图片，QColor 用于绘制高级阴影
+from PySide6.QtGui import QSurfaceFormat, QAction, QKeyEvent, QPixmap, QPainter, QPainterPath, QColor
 from PySide6.QtCore import Qt, QTimer, QEvent, QPropertyAnimation, QEasingCurve, QPoint, QUrl
 
 from engine import PavoEngine
@@ -21,6 +23,7 @@ class PavoPlayer(QMainWindow):
         self.setAcceptDrops(True)
 
         self.engine = PavoEngine()
+        self.engine.thumbnail_ready.connect(self._on_thumbnail_ready)
         
         self.hud_timer = QTimer(self)
         self.hud_timer.setInterval(2000)
@@ -47,7 +50,58 @@ class PavoPlayer(QMainWindow):
         self.hud = HUDPanel(self.central_widget)
         self.hud.raise_()
 
-        # 顶部 OSD
+        # ==========================================
+        # 👑 焕然一新的高颜值悬浮缩略图弹窗
+        # ==========================================
+        self.thumb_popup = QWidget(self.central_widget)
+        self.thumb_popup.setFixedSize(176, 128) # 略微放大，容纳更精美的排版
+        
+        # 1. 增加极具质感的柔和外发光阴影
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(25)
+        shadow.setColor(QColor(0, 0, 0, 180))
+        shadow.setOffset(0, 8)
+        self.thumb_popup.setGraphicsEffect(shadow)
+
+        # 2. 调优 macOS 风格的深邃半透明背景色
+        self.thumb_popup.setStyleSheet("""
+            QWidget {
+                background-color: rgba(30, 30, 32, 240);
+                border: 1px solid rgba(255, 255, 255, 30);
+                border-radius: 12px;
+            }
+            QLabel { background-color: transparent; border: none; }
+        """)
+        popup_layout = QVBoxLayout(self.thumb_popup)
+        popup_layout.setContentsMargins(8, 8, 8, 4) # 顶部和两侧留白多一点，底部稍紧凑
+        popup_layout.setSpacing(4)
+
+        self.thumb_label = QLabel()
+        self.thumb_label.setFixedSize(158, 89) # 精确的 16:9 比例
+        self.thumb_label.setStyleSheet("background-color: rgba(0, 0, 0, 100); border-radius: 6px;")
+        self.thumb_label.setAlignment(Qt.AlignCenter)
+
+        self.thumb_time_label = QLabel("00:00")
+        self.thumb_time_label.setAlignment(Qt.AlignCenter)
+        # 3. 换用干净的无衬线字体和加粗数字，更具现代感
+        self.thumb_time_label.setStyleSheet("""
+            color: rgba(255, 255, 255, 230); 
+            font-size: 13px; 
+            font-weight: 600; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        """)
+
+        popup_layout.addWidget(self.thumb_label)
+        popup_layout.addWidget(self.thumb_time_label)
+        self.thumb_popup.hide()
+
+        # 200ms 防抖计时器
+        self.thumb_timer = QTimer(self)
+        self.thumb_timer.setSingleShot(True)
+        self.thumb_timer.setInterval(200) 
+        self.thumb_timer.timeout.connect(self._request_thumbnail)
+        self._current_hover_time = 0
+
         self.top_osd = QLabel(self.central_widget)
         self.top_osd.setAlignment(Qt.AlignCenter)
         self.top_osd.setText("✨ 请将视频文件拖拽至此播放")
@@ -91,6 +145,10 @@ class PavoPlayer(QMainWindow):
         self.hud.skip_requested.connect(self.on_skip)
         self.hud.fullscreen_requested.connect(self.toggle_fullscreen)
         
+        self.hud.progress_slider.hover_entered.connect(self.thumb_popup.show)
+        self.hud.progress_slider.hover_left.connect(self.thumb_popup.hide)
+        self.hud.progress_slider.hover_moved.connect(self._on_hover_moved)
+        
         if hasattr(self.hud, 'settings_btn'):
             self.hud.settings_btn.clicked.connect(self.show_settings_menu)
         if hasattr(self.hud, 'subtitle_btn'):
@@ -113,8 +171,59 @@ class PavoPlayer(QMainWindow):
         self.timer.start(500)
 
     # ==========================================
-    # 画中画模式 (PiP)
+    # 缩略图逻辑驱动区
     # ==========================================
+    def _on_hover_moved(self, time_sec, local_x):
+        self._current_hover_time = time_sec
+        
+        s = int(time_sec)
+        time_str = f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}" if s >= 3600 else f"{(s%3600)//60:02d}:{s%60:02d}"
+        self.thumb_time_label.setText(time_str)
+
+        slider = self.hud.progress_slider
+        slider_global = slider.mapToGlobal(QPoint(local_x, 0))
+        local_pos = self.central_widget.mapFromGlobal(slider_global)
+        
+        px = local_pos.x() - self.thumb_popup.width() // 2
+        px = max(10, min(px, self.width() - self.thumb_popup.width() - 10))
+        # 抬高一点，给阴影留出空间
+        py = self.hud.y() - self.thumb_popup.height() - 20
+        
+        self.thumb_popup.move(px, py)
+        self.thumb_timer.start()
+
+    def _request_thumbnail(self):
+        self.engine.get_thumbnail(self._current_hover_time)
+
+    def _on_thumbnail_ready(self, time_key, img_bytes):
+        if abs(time_key - int(self._current_hover_time)) <= 2:
+            pixmap = QPixmap()
+            pixmap.loadFromData(img_bytes)
+            
+            # 👑 4. 魔法：给视频原图“动手术”，切割出圆角
+            target_size = self.thumb_label.size()
+            scaled_pixmap = pixmap.scaled(target_size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            
+            # 创建一个透明的空画板
+            rounded_pixmap = QPixmap(target_size)
+            rounded_pixmap.fill(Qt.transparent)
+            
+            painter = QPainter(rounded_pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+            
+            # 定义一个带圆角的切割路径 (6像素内圆角)
+            path = QPainterPath()
+            path.addRoundedRect(0, 0, target_size.width(), target_size.height(), 6, 6)
+            painter.setClipPath(path)
+            
+            # 把图片画入切割路径中，自动去掉直角边
+            x_offset = (target_size.width() - scaled_pixmap.width()) // 2
+            y_offset = (target_size.height() - scaled_pixmap.height()) // 2
+            painter.drawPixmap(x_offset, y_offset, scaled_pixmap)
+            painter.end()
+            
+            self.thumb_label.setPixmap(rounded_pixmap)
+
     def toggle_pip(self):
         if not self._is_pip:
             self._normal_geometry = self.geometry()
@@ -236,9 +345,6 @@ class PavoPlayer(QMainWindow):
         btn_pos = self.hud.subtitle_btn.mapToGlobal(QPoint(0, 0))
         menu.exec(btn_pos - QPoint(0, menu.sizeHint().height() + 10))
 
-    # ==========================================
-    # 👑 升级版设置菜单：增加画面比例
-    # ==========================================
     def show_settings_menu(self):
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -258,7 +364,6 @@ class PavoPlayer(QMainWindow):
             }
         """)
 
-        # 1. 倍速播放
         speed_menu = menu.addMenu("⏩ 倍速播放")
         speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
         current_speed = getattr(self.engine, 'playback_speed', 1.0)
@@ -269,7 +374,6 @@ class PavoPlayer(QMainWindow):
             action.triggered.connect(lambda checked, val=s: self.change_speed(val))
             speed_menu.addAction(action)
 
-        # 2. 👑 画面比例切换
         aspect_menu = menu.addMenu("📺 画面比例")
         aspects = ["Auto", "16:9", "4:3", "21:9", "9:16", "1:1"]
         current_aspect = getattr(self.engine, 'current_aspect', 'Auto')
@@ -280,7 +384,6 @@ class PavoPlayer(QMainWindow):
             action.triggered.connect(lambda checked, val=r: self.change_aspect_ratio(val))
             aspect_menu.addAction(action)
 
-        # 3. 音轨切换
         audio_tracks = self.engine.get_audio_tracks()
         if audio_tracks:
             audio_menu = menu.addMenu("🎧 切换音轨")
@@ -299,11 +402,9 @@ class PavoPlayer(QMainWindow):
             self.engine.set_speed(speed)
             self.engine.playback_speed = speed 
 
-    # 👑 新增：比例切换触发器
     def change_aspect_ratio(self, ratio):
         if hasattr(self.engine, 'set_aspect_ratio'):
             self.engine.set_aspect_ratio(ratio)
-            # 优雅地给用户反馈
             ratio_text = "默认" if ratio == "Auto" else ratio
             self.top_osd.setText(f"📺 画面比例已切换为：{ratio_text}")
             self.top_osd.adjustSize()

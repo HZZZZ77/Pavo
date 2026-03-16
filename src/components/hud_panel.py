@@ -9,9 +9,6 @@ try:
 except ImportError:
     HAS_SVG = False
 
-# ==========================================
-# 👑 SVG 矢量图标库
-# ==========================================
 SVG_PLAY = '<svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>'
 SVG_PAUSE = '<svg viewBox="0 0 24 24" fill="white"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'
 SVG_REWIND = '<svg viewBox="0 0 24 24" fill="white"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>'
@@ -22,6 +19,36 @@ SVG_FULLSCREEN = '<svg viewBox="0 0 24 24" fill="white"><path d="M7 14H5v5h5v-2H
 SVG_SETTINGS = '<svg viewBox="0 0 24 24" fill="white"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>'
 SVG_CC = '<svg viewBox="0 0 24 24" fill="white"><path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/></svg>'
 SVG_PIP = '<svg viewBox="0 0 24 24" fill="white"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"/></svg>'
+
+# ==========================================
+# 👑 具有极客感知的悬停进度条
+# ==========================================
+class HoverSlider(QSlider):
+    hover_moved = Signal(float, int) 
+    hover_entered = Signal()
+    hover_left = Signal()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setMouseTracking(True)
+        self.total_time = 0
+
+    def mouseMoveEvent(self, event):
+        super().mouseMoveEvent(event)
+        # 实时换算：把鼠标的 X 坐标转化为视频的具体秒数发射出去！
+        if self.total_time > 0:
+            val = event.position().x() / self.width()
+            val = max(0.0, min(1.0, val))
+            time_sec = val * self.total_time
+            self.hover_moved.emit(time_sec, int(event.position().x()))
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.hover_entered.emit()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.hover_left.emit()
 
 class HUDPanel(QWidget):
     play_state_changed = Signal(bool)
@@ -114,11 +141,9 @@ class HUDPanel(QWidget):
         main_v_layout.setContentsMargins(25, 15, 25, 15)
         main_v_layout.setSpacing(8)
 
-        # ================= 第一排：按键控制 =================
         btns_row = QHBoxLayout()
         btns_row.setContentsMargins(0, 0, 0, 0)
         
-        # 👑 音量区宽度锁定 160，保证左侧对称
         self.vol_group = QWidget()
         self.vol_group.setFixedWidth(160)
         vol_layout = QHBoxLayout(self.vol_group)
@@ -163,7 +188,6 @@ class HUDPanel(QWidget):
         center_layout.addWidget(self.play_btn)
         center_layout.addWidget(self.forward_btn)
         
-        # 👑 工具区宽度锁定 160，增加 10px 间距，保证右侧对称且按钮不挤
         self.right_utils = QWidget()
         self.right_utils.setFixedWidth(160) 
         util_layout = QHBoxLayout(self.right_utils)
@@ -202,7 +226,6 @@ class HUDPanel(QWidget):
         btns_row.addStretch()
         btns_row.addWidget(self.right_utils)
         
-        # ================= 第二排：进度条和时间 =================
         time_row = QHBoxLayout()
         time_row.setContentsMargins(0, 0, 0, 0)
         time_row.setSpacing(10)
@@ -214,7 +237,8 @@ class HUDPanel(QWidget):
         self.total_time_label.setFixedWidth(42)
         self.total_time_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         
-        self.progress_slider = QSlider(Qt.Horizontal)
+        # 👑 替换为我们写的高级 HoverSlider
+        self.progress_slider = HoverSlider(Qt.Horizontal)
         self.progress_slider.setObjectName("ProgressBar")
         self.progress_slider.setRange(0, 1000)
         self.progress_slider.setFixedHeight(16)
@@ -228,7 +252,6 @@ class HUDPanel(QWidget):
         main_v_layout.addLayout(btns_row)
         main_v_layout.addLayout(time_row)
 
-        # ================= 连线区 =================
         self.rewind_btn.clicked.connect(lambda: self.skip_requested.emit(-10))
         self.forward_btn.clicked.connect(lambda: self.skip_requested.emit(10))
         self.play_btn.clicked.connect(self.toggle_play_ui)
@@ -264,6 +287,8 @@ class HUDPanel(QWidget):
 
     def update_progress(self, current, total):
         if total > 0:
+            # 传递总时长给 HoverSlider 用于计算
+            self.progress_slider.total_time = total
             self.curr_time_label.setText(self.format_time(current))
             self.total_time_label.setText(self.format_time(total))
             if not self.progress_slider.isSliderDown():
@@ -298,22 +323,17 @@ class HUDPanel(QWidget):
         self._drag_pos = None
         super().mouseReleaseEvent(event)
 
-    # ==========================================
-    # 👑 画中画/精简模式动态切换
-    # ==========================================
     def set_pip_mode(self, is_pip):
-        # 隐藏/显示非核心控件
         self.vol_slider.setVisible(not is_pip)
         self.subtitle_btn.setVisible(not is_pip)
         self.settings_btn.setVisible(not is_pip)
         self.fullscreen_btn.setVisible(not is_pip)
         
-        # 动态调整占位宽度，让核心按钮完美居中
         if is_pip:
-            self.vol_group.setFixedWidth(40)     # 只留静音按钮的空间
-            self.right_utils.setFixedWidth(40)   # 只留 PiP 按钮的空间
-            self.setFixedHeight(85)              # 面板整体变矮，更显精致
+            self.vol_group.setFixedWidth(40)
+            self.right_utils.setFixedWidth(40)
+            self.setFixedHeight(85)
         else:
-            self.vol_group.setFixedWidth(160)    # 恢复完整宽度
+            self.vol_group.setFixedWidth(160)
             self.right_utils.setFixedWidth(160)
-            self.setFixedHeight(100)             # 恢复完整高度
+            self.setFixedHeight(100)

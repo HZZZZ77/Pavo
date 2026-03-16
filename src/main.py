@@ -18,8 +18,6 @@ class PavoPlayer(QMainWindow):
         self.setWindowTitle("Pavo") 
         self.resize(1000, 600)
         self.setStyleSheet("background-color: black;")
-        
-        # 兜底：主窗口也开启拖拽接收
         self.setAcceptDrops(True)
 
         self.engine = PavoEngine()
@@ -27,6 +25,10 @@ class PavoPlayer(QMainWindow):
         self.hud_timer = QTimer(self)
         self.hud_timer.setInterval(2000)
         self.hud_timer.timeout.connect(self.hide_hud)
+        
+        # 用于记录画中画状态和恢复前的尺寸
+        self._is_pip = False
+        self._normal_geometry = None
 
         self.init_ui()
 
@@ -46,9 +48,7 @@ class PavoPlayer(QMainWindow):
         self.hud = HUDPanel(self.central_widget)
         self.hud.raise_()
 
-        # ==========================================
-        # 👑 顶部 OSD 信息栏 (显示文件名/拖拽提示)
-        # ==========================================
+        # 顶部 OSD
         self.top_osd = QLabel(self.central_widget)
         self.top_osd.setAlignment(Qt.AlignCenter)
         self.top_osd.setText("✨ 请将视频文件拖拽至此播放")
@@ -67,96 +67,120 @@ class PavoPlayer(QMainWindow):
         self.top_osd.adjustSize()
         self.top_osd.raise_()
 
-        # --- 底部 HUD 的动画引擎 ---
+        # 动画引擎
         self.opacity_effect = QGraphicsOpacityEffect(self.hud)
         self.opacity_effect.setOpacity(1.0)
         self.hud.setGraphicsEffect(self.opacity_effect)
-
         self.fade_anim = QPropertyAnimation(self.opacity_effect, b"opacity")
         self.fade_anim.setDuration(250)
         self.fade_anim.setEasingCurve(QEasingCurve.InOutQuad)
         self.fade_anim.setEndValue(1.0)
         self.fade_anim.finished.connect(self._on_fade_finished)
 
-        # --- 顶部 OSD 的同步动画引擎 ---
         self.osd_opacity_effect = QGraphicsOpacityEffect(self.top_osd)
         self.osd_opacity_effect.setOpacity(1.0)
         self.top_osd.setGraphicsEffect(self.osd_opacity_effect)
-
         self.osd_fade_anim = QPropertyAnimation(self.osd_opacity_effect, b"opacity")
         self.osd_fade_anim.setDuration(250)
         self.osd_fade_anim.setEasingCurve(QEasingCurve.InOutQuad)
         self.osd_fade_anim.setEndValue(1.0)
 
-        # ==========================================
-        # 👑 信号与槽连线
-        # ==========================================
-        # 1. HUD 控制连线
+        # 连线
         self.hud.play_state_changed.connect(self.engine.set_playing)
         self.hud.volume_changed.connect(self.engine.set_volume)
         self.hud.mute_changed.connect(self.engine.set_mute)
         self.hud.seek_requested.connect(self.engine.seek_to_percent)
-        
         self.hud.skip_requested.connect(self.on_skip)
         self.hud.fullscreen_requested.connect(self.toggle_fullscreen)
         
+        # 连接新的 CC 和 PiP 按钮信号
         if hasattr(self.hud, 'settings_btn'):
             self.hud.settings_btn.clicked.connect(self.show_settings_menu)
+        if hasattr(self.hud, 'subtitle_btn'):
+            self.hud.subtitle_requested.connect(self.show_subtitle_menu)
+        if hasattr(self.hud, 'pip_btn'):
+            self.hud.pip_requested.connect(self.toggle_pip)
 
         if hasattr(self.hud, 'user_activity'):
             self.hud.user_activity.connect(self.wake_hud)
 
-        # 2. 画布交互连线 (单双击 + 拖拽接受)
         if hasattr(self.video_canvas, 'clicked'):
             self.video_canvas.clicked.connect(self.hud.toggle_play_ui)
         if hasattr(self.video_canvas, 'double_clicked'):
             self.video_canvas.double_clicked.connect(self.toggle_fullscreen)
-        
-        # 👑 最核心的一步：接住画布发来的拖拽路径！
         if hasattr(self.video_canvas, 'file_dropped'):
-            self.video_canvas.file_dropped.connect(self.load_local_video)
+            self.video_canvas.file_dropped.connect(self.handle_dropped_file)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.sync_progress)
         self.timer.start(500)
 
     # ==========================================
-    # 👑 拖拽播放核心逻辑
+    # 👑 画中画模式 (PiP) 核心逻辑与精简模式切换
     # ==========================================
-    def dragEnterEvent(self, event):
-        # 兜底机制：如果拖拽事件漏到了主窗口，也接收它
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
+    def toggle_pip(self):
+        if not self._is_pip:
+            # 开启画中画
+            self._normal_geometry = self.geometry()
+            self._is_pip = True
+            
+            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+            self.showNormal() 
+            self.resize(480, 270) 
+            self.show()
+            
+            # 命令 HUD 进入精简模式
+            if hasattr(self.hud, 'set_pip_mode'):
+                self.hud.set_pip_mode(True)
+            
+            self.top_osd.setText("🚀 已进入画中画模式")
+            self.top_osd.adjustSize()
+            self.resizeEvent(None)
+            self.wake_hud()
+        else:
+            # 退出画中画
+            self._is_pip = False
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+            if self._normal_geometry:
+                self.setGeometry(self._normal_geometry)
+            self.show()
+            
+            # 命令 HUD 恢复完全体
+            if hasattr(self.hud, 'set_pip_mode'):
+                self.hud.set_pip_mode(False)
+                
+            # 👑 核心修复：强制取消用户的拖拽状态，让面板乖乖回到默认底部中央！
+            if hasattr(self.hud, '_user_dragged'):
+                self.hud._user_dragged = False
+                
+            # 👑 核心修复：更新提示文字，并触发重新排版
+            self.top_osd.setText("🔙 已恢复正常模式")
+            self.top_osd.adjustSize()
+            self.resizeEvent(None)
+            self.wake_hud()
 
-    def dropEvent(self, event):
-        # 兜底机制
-        urls = event.mimeData().urls()
-        if urls:
-            file_path = urls[0].toLocalFile()
+    def handle_dropped_file(self, file_path):
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in ['.srt', '.ass', '.vtt', '.ssa']:
+            self.engine.add_external_subtitle(file_path)
+            self.top_osd.setText(f"💬 字幕已加载：{os.path.basename(file_path)}")
+            self.top_osd.adjustSize()
+            self.resizeEvent(None)
+            self.wake_hud()
+        else:
             self.load_local_video(file_path)
 
     def load_local_video(self, file_path):
-        """加载本地视频并更新 UI"""
-        # 提取文件名
         filename = os.path.basename(file_path)
-        self.top_osd.setText(f"正在播放：{filename}")
+        self.top_osd.setText(f"🎬 正在播放：{filename}")
         self.top_osd.adjustSize()
-        self.resizeEvent(None)  # 重新居中 OSD
-
-        # 唤醒面板展示信息
+        self.resizeEvent(None) 
         self.wake_hud()
-        
-        # 通知引擎播放新视频！
         self.engine.play(file_path)
-
-        # 确保播放按钮状态重置为“暂停”图标 (表示正在播放)
         if hasattr(self.hud, 'is_playing'):
             self.hud.is_playing = True
             self.hud.play_btn.setIcon(self.hud.icons['pause'])
 
-    # ==========================================
-    # 基础功能逻辑
-    # ==========================================
     def on_skip(self, seconds):
         curr, total = self.engine.get_progress()
         if total <= 0: return
@@ -177,18 +201,68 @@ class PavoPlayer(QMainWindow):
             self.hud.toggle_play_ui()
         super().keyPressEvent(event)
 
-    def show_settings_menu(self):
+    # ==========================================
+    # 👑 独立出来的 CC 字幕菜单
+    # ==========================================
+    def show_subtitle_menu(self):
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
-                background-color: rgba(45, 45, 45, 230);
+                background-color: rgba(45, 45, 45, 240);
                 color: white;
-                border: 1px solid rgba(255, 255, 255, 50);
+                border: 1px solid rgba(255, 255, 255, 40);
                 border-radius: 8px;
                 padding: 5px;
             }
             QMenu::item {
-                padding: 6px 25px;
+                padding: 8px 30px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #007AFF;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: rgba(255, 255, 255, 30);
+                margin: 4px 10px;
+            }
+        """)
+        
+        sub_tracks = self.engine.get_subtitle_tracks()
+        
+        action_disable = QAction("🚫 关闭字幕", self)
+        action_disable.setCheckable(True)
+        has_selected_sub = any(t['selected'] for t in sub_tracks)
+        if not has_selected_sub: action_disable.setChecked(True)
+        action_disable.triggered.connect(lambda: self.engine.set_subtitle_track('no'))
+        menu.addAction(action_disable)
+        menu.addSeparator()
+
+        for t in sub_tracks:
+            action = QAction(t['name'], self)
+            action.setCheckable(True)
+            if t['selected']: action.setChecked(True)
+            action.triggered.connect(lambda checked, val=t['id']: self.engine.set_subtitle_track(val))
+            menu.addAction(action)
+
+        btn_pos = self.hud.subtitle_btn.mapToGlobal(QPoint(0, 0))
+        menu.exec(btn_pos - QPoint(0, menu.sizeHint().height() + 10))
+
+    # ==========================================
+    # 👑 设置菜单 (现在只管音轨和倍速)
+    # ==========================================
+    def show_settings_menu(self):
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: rgba(45, 45, 45, 240);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 40);
+                border-radius: 8px;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 8px 30px;
                 border-radius: 4px;
             }
             QMenu::item:selected {
@@ -196,19 +270,28 @@ class PavoPlayer(QMainWindow):
             }
         """)
 
+        speed_menu = menu.addMenu("⏩ 倍速播放")
         speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
         current_speed = getattr(self.engine, 'playback_speed', 1.0)
-
         for s in speeds:
             action = QAction(f"{s}x", self)
             action.setCheckable(True)
-            if s == current_speed:
-                action.setChecked(True)
+            if s == current_speed: action.setChecked(True)
             action.triggered.connect(lambda checked, val=s: self.change_speed(val))
-            menu.addAction(action)
+            speed_menu.addAction(action)
+
+        audio_tracks = self.engine.get_audio_tracks()
+        if audio_tracks:
+            audio_menu = menu.addMenu("🎧 切换音轨")
+            for t in audio_tracks:
+                action = QAction(t['name'], self)
+                action.setCheckable(True)
+                if t['selected']: action.setChecked(True)
+                action.triggered.connect(lambda checked, val=t['id']: self.engine.set_audio_track(val))
+                audio_menu.addAction(action)
 
         btn_pos = self.hud.settings_btn.mapToGlobal(QPoint(0, 0))
-        menu.exec(btn_pos - QPoint(0, menu.sizeHint().height() + 5))
+        menu.exec(btn_pos - QPoint(0, menu.sizeHint().height() + 10))
 
     def change_speed(self, speed):
         if hasattr(self.engine, 'set_speed'):
@@ -217,17 +300,15 @@ class PavoPlayer(QMainWindow):
 
     def resizeEvent(self, event):
         if event: super().resizeEvent(event)
-        
-        # 动态居中顶部 OSD
         if hasattr(self, 'top_osd'):
             osd_w = self.top_osd.width()
             osd_x = (self.width() - osd_w) // 2
             self.top_osd.move(osd_x, 30)
-
-        # 动态响应底部 HUD
         if hasattr(self, 'hud'):
-            hud_w = min(520, self.width() - 40)
+            hud_w = min(600, self.width() - 40)
             self.hud.setFixedWidth(hud_w)
+            
+            # 这一行就是靠 _user_dragged 决定要不要居中的！
             if not getattr(self.hud, '_user_dragged', False):
                 x = (self.width() - hud_w) // 2
                 y = self.height() - self.hud.height() - 40
@@ -253,24 +334,18 @@ class PavoPlayer(QMainWindow):
         self.hide_hud()
         super().leaveEvent(event)
 
-    # ==========================================
-    # 👑 同步呼吸动画：底部面板与顶部 OSD 同进同退
-    # ==========================================
     def wake_hud(self):
         if self.opacity_effect.opacity() < 1.0 and self.fade_anim.endValue() != 1.0:
             self.hud.show()
             self.top_osd.show()
-
             self.fade_anim.stop()
             self.fade_anim.setStartValue(self.opacity_effect.opacity())
             self.fade_anim.setEndValue(1.0)
             self.fade_anim.start()
-
             self.osd_fade_anim.stop()
             self.osd_fade_anim.setStartValue(self.osd_opacity_effect.opacity())
             self.osd_fade_anim.setEndValue(1.0)
             self.osd_fade_anim.start()
-
         if getattr(self.hud, 'is_playing', True):
             self.hud_timer.start()
 
@@ -280,7 +355,6 @@ class PavoPlayer(QMainWindow):
             self.fade_anim.setStartValue(self.opacity_effect.opacity())
             self.fade_anim.setEndValue(0.0)
             self.fade_anim.start()
-
             self.osd_fade_anim.stop()
             self.osd_fade_anim.setStartValue(self.osd_opacity_effect.opacity())
             self.osd_fade_anim.setEndValue(0.0)

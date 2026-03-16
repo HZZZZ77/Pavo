@@ -9,6 +9,9 @@ try:
 except ImportError:
     HAS_SVG = False
 
+# ==========================================
+# 👑 SVG 矢量图标库
+# ==========================================
 SVG_PLAY = '<svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>'
 SVG_PAUSE = '<svg viewBox="0 0 24 24" fill="white"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'
 SVG_REWIND = '<svg viewBox="0 0 24 24" fill="white"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>'
@@ -17,6 +20,8 @@ SVG_VOL = '<svg viewBox="0 0 24 24" fill="white"><path d="M3 9v6h4l5 5V4L7 9H3zm
 SVG_MUTE = '<svg viewBox="0 0 24 24" fill="#ff5555"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>'
 SVG_FULLSCREEN = '<svg viewBox="0 0 24 24" fill="white"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>'
 SVG_SETTINGS = '<svg viewBox="0 0 24 24" fill="white"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>'
+SVG_CC = '<svg viewBox="0 0 24 24" fill="white"><path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/></svg>'
+SVG_PIP = '<svg viewBox="0 0 24 24" fill="white"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"/></svg>'
 
 class HUDPanel(QWidget):
     play_state_changed = Signal(bool)
@@ -25,6 +30,8 @@ class HUDPanel(QWidget):
     seek_requested = Signal(float)
     skip_requested = Signal(int)
     fullscreen_requested = Signal()
+    subtitle_requested = Signal() 
+    pip_requested = Signal()      
     user_activity = Signal() 
 
     def __init__(self, parent=None):
@@ -59,6 +66,8 @@ class HUDPanel(QWidget):
         self.icons['mute'] = self._create_svg_icon(SVG_MUTE)
         self.icons['fullscreen'] = self._create_svg_icon(SVG_FULLSCREEN)
         self.icons['settings'] = self._create_svg_icon(SVG_SETTINGS)
+        self.icons['cc'] = self._create_svg_icon(SVG_CC)   
+        self.icons['pip'] = self._create_svg_icon(SVG_PIP) 
 
     def init_ui(self):
         shadow = QGraphicsDropShadowEffect(self)
@@ -88,23 +97,18 @@ class HUDPanel(QWidget):
                 font-variant-numeric: tabular-nums;
             }
             QSlider { background: transparent; }
-            
-            /* 进度条：经典细竖条 */
             QSlider#ProgressBar::groove:horizontal { border: none; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 40); }
             QSlider#ProgressBar::sub-page:horizontal { background: rgba(255, 255, 255, 200); border-radius: 2px; }
             QSlider#ProgressBar::add-page:horizontal { background: transparent; }
             QSlider#ProgressBar::handle:horizontal { width: 3px; height: 12px; margin: -4px 0px; background: white; border-radius: 1px; }
             QSlider#ProgressBar:hover::groove:horizontal { height: 5px; border-radius: 3px;}
             QSlider#ProgressBar:hover::handle:horizontal { height: 14px; margin: -4px 0px;}
-            
-            /* 音量条：亮蓝色 */
             QSlider#VolumeBar::groove:horizontal { border: none; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 40); }
             QSlider#VolumeBar::sub-page:horizontal { background: #007AFF; border-radius: 2px; }
             QSlider#VolumeBar::add-page:horizontal { background: transparent; }
             QSlider#VolumeBar::handle:horizontal { width: 12px; height: 12px; margin: -4px 0px; border-radius: 6px; background: white; }
         """)
         
-        # 👑 释放高度！设定为 100px，绝不压迫任何按钮
         self.setFixedHeight(100) 
         main_v_layout = QVBoxLayout(self)
         main_v_layout.setContentsMargins(25, 15, 25, 15)
@@ -114,8 +118,9 @@ class HUDPanel(QWidget):
         btns_row = QHBoxLayout()
         btns_row.setContentsMargins(0, 0, 0, 0)
         
+        # 👑 音量区宽度锁定 160，保证左侧对称
         self.vol_group = QWidget()
-        self.vol_group.setFixedWidth(150)
+        self.vol_group.setFixedWidth(160)
         vol_layout = QHBoxLayout(self.vol_group)
         vol_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -158,12 +163,24 @@ class HUDPanel(QWidget):
         center_layout.addWidget(self.play_btn)
         center_layout.addWidget(self.forward_btn)
         
+        # 👑 工具区宽度锁定 160，增加 10px 间距，保证右侧对称且按钮不挤
         self.right_utils = QWidget()
-        self.right_utils.setFixedWidth(150)
+        self.right_utils.setFixedWidth(160) 
         util_layout = QHBoxLayout(self.right_utils)
         util_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         util_layout.setContentsMargins(0, 0, 0, 0)
+        util_layout.setSpacing(10)
         
+        self.subtitle_btn = QPushButton()
+        self.subtitle_btn.setIcon(self.icons['cc'])
+        self.subtitle_btn.setIconSize(QSize(20, 20))
+        self.subtitle_btn.setFixedSize(30, 30)
+        
+        self.pip_btn = QPushButton()
+        self.pip_btn.setIcon(self.icons['pip'])
+        self.pip_btn.setIconSize(QSize(20, 20))
+        self.pip_btn.setFixedSize(30, 30)
+
         self.settings_btn = QPushButton()
         self.settings_btn.setIcon(self.icons['settings'])
         self.settings_btn.setIconSize(QSize(20, 20))
@@ -174,6 +191,8 @@ class HUDPanel(QWidget):
         self.fullscreen_btn.setIconSize(QSize(20, 20))
         self.fullscreen_btn.setFixedSize(30, 30)
         
+        util_layout.addWidget(self.subtitle_btn)
+        util_layout.addWidget(self.pip_btn)
         util_layout.addWidget(self.settings_btn)
         util_layout.addWidget(self.fullscreen_btn)
 
@@ -206,7 +225,6 @@ class HUDPanel(QWidget):
         time_row.addWidget(self.progress_slider)
         time_row.addWidget(self.total_time_label)
         
-        # 👑 翻转布局：按键在上，时间在下
         main_v_layout.addLayout(btns_row)
         main_v_layout.addLayout(time_row)
 
@@ -216,6 +234,9 @@ class HUDPanel(QWidget):
         self.play_btn.clicked.connect(self.toggle_play_ui)
         self.mute_btn.clicked.connect(self.toggle_mute_ui)
         self.fullscreen_btn.clicked.connect(self.fullscreen_requested.emit)
+        
+        self.subtitle_btn.clicked.connect(self.subtitle_requested.emit)
+        self.pip_btn.clicked.connect(self.pip_requested.emit)
 
     def toggle_play_ui(self):
         self.is_playing = not self.is_playing
@@ -276,3 +297,23 @@ class HUDPanel(QWidget):
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
         super().mouseReleaseEvent(event)
+
+    # ==========================================
+    # 👑 画中画/精简模式动态切换
+    # ==========================================
+    def set_pip_mode(self, is_pip):
+        # 隐藏/显示非核心控件
+        self.vol_slider.setVisible(not is_pip)
+        self.subtitle_btn.setVisible(not is_pip)
+        self.settings_btn.setVisible(not is_pip)
+        self.fullscreen_btn.setVisible(not is_pip)
+        
+        # 动态调整占位宽度，让核心按钮完美居中
+        if is_pip:
+            self.vol_group.setFixedWidth(40)     # 只留静音按钮的空间
+            self.right_utils.setFixedWidth(40)   # 只留 PiP 按钮的空间
+            self.setFixedHeight(85)              # 面板整体变矮，更显精致
+        else:
+            self.vol_group.setFixedWidth(160)    # 恢复完整宽度
+            self.right_utils.setFixedWidth(160)
+            self.setFixedHeight(100)             # 恢复完整高度

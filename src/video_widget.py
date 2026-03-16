@@ -9,8 +9,8 @@ import traceback
 class PavoVideoWidget(QOpenGLWidget):
     clicked = Signal()
     double_clicked = Signal()
-    # 👑 新增：一条绝对可靠的专线，用来传输文件路径！
-    file_dropped = Signal(str) 
+    # 👑 升级：可以一次性发射一堆文件的路径！
+    files_dropped = Signal(list) 
 
     def __init__(self, engine, parent=None):
         super().__init__(parent)
@@ -27,11 +27,8 @@ class PavoVideoWidget(QOpenGLWidget):
         self._click_timer.timeout.connect(self._handle_click_timeout)
 
     def initializeGL(self):
-        print("[VideoWidget] initializeGL triggered. Setting up OpenGL context...")
         try:
-            if not self.engine.player:
-                print("[VideoWidget] Error: Engine not ready. Aborting OpenGL initialization.")
-                return
+            if not self.engine.player: return
 
             def get_proc_address(ctx_ptr, name):
                 ctx = QOpenGLContext.currentContext()
@@ -56,7 +53,6 @@ class PavoVideoWidget(QOpenGLWidget):
             
         except Exception as e:
             print(f"[VideoWidget] Fatal error during initializeGL: {e}")
-            traceback.print_exc()
 
     def paintGL(self):
         try:
@@ -71,15 +67,11 @@ class PavoVideoWidget(QOpenGLWidget):
                         'fbo': self.defaultFramebufferObject()
                     }
                 )
-        except Exception as e:
-            print(f"[VideoWidget] Error during paintGL: {e}")
+        except Exception: pass
 
     def on_mpv_update(self):
         QMetaObject.invokeMethod(self, "update", Qt.QueuedConnection)
 
-    # ==========================================
-    # 👑 拖拽接收 (发射信号弹！)
-    # ==========================================
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
@@ -93,23 +85,18 @@ class PavoVideoWidget(QOpenGLWidget):
             event.ignore()
 
     def dropEvent(self, event):
+        # 👑 核心升级：遍历用户拖进来的所有文件
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
             urls = event.mimeData().urls()
-            if urls:
-                file_path = urls[0].toLocalFile()
-                print(f"[VideoWidget] File dropped! Firing signal for: {file_path}")
-                # 👑 绝对可靠：把路径装进信号里，发射出去！
-                self.file_dropped.emit(file_path)
+            paths = [url.toLocalFile() for url in urls if url.toLocalFile()]
+            if paths:
+                self.files_dropped.emit(paths)
 
-    # ==========================================
-    # 鼠标滚轮调节音量
-    # ==========================================
     def wheelEvent(self, event):
         delta = event.angleDelta().y()
         if delta != 0:
             step = 5 if delta > 0 else -5
-            # 滚轮也改用更安全的获取方式，如果失败就不做处理
             try:
                 main_window = self.window()
                 if hasattr(main_window, 'hud') and hasattr(main_window.hud, 'vol_slider'):
@@ -118,12 +105,8 @@ class PavoVideoWidget(QOpenGLWidget):
                     main_window.hud.vol_slider.setValue(new_vol)
                     if hasattr(main_window, 'wake_hud'):
                         main_window.wake_hud()
-            except:
-                pass
+            except: pass
 
-    # ==========================================
-    # 状态机逻辑
-    # ==========================================
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._click_count += 1

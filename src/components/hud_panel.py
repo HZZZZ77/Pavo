@@ -19,10 +19,9 @@ SVG_FULLSCREEN = '<svg viewBox="0 0 24 24" fill="white"><path d="M7 14H5v5h5v-2H
 SVG_SETTINGS = '<svg viewBox="0 0 24 24" fill="white"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>'
 SVG_CC = '<svg viewBox="0 0 24 24" fill="white"><path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/></svg>'
 SVG_PIP = '<svg viewBox="0 0 24 24" fill="white"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"/></svg>'
+# 👑 新增：极简的播放列表图标
+SVG_PLAYLIST = '<svg viewBox="0 0 24 24" fill="white"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>'
 
-# ==========================================
-# 👑 具有极客感知的悬停进度条
-# ==========================================
 class HoverSlider(QSlider):
     hover_moved = Signal(float, int) 
     hover_entered = Signal()
@@ -35,7 +34,6 @@ class HoverSlider(QSlider):
 
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
-        # 实时换算：把鼠标的 X 坐标转化为视频的具体秒数发射出去！
         if self.total_time > 0:
             val = event.position().x() / self.width()
             val = max(0.0, min(1.0, val))
@@ -58,7 +56,8 @@ class HUDPanel(QWidget):
     skip_requested = Signal(int)
     fullscreen_requested = Signal()
     subtitle_requested = Signal() 
-    pip_requested = Signal()      
+    pip_requested = Signal()
+    playlist_requested = Signal() # 👑 新增：播放列表请求信号
     user_activity = Signal() 
 
     def __init__(self, parent=None):
@@ -95,6 +94,7 @@ class HUDPanel(QWidget):
         self.icons['settings'] = self._create_svg_icon(SVG_SETTINGS)
         self.icons['cc'] = self._create_svg_icon(SVG_CC)   
         self.icons['pip'] = self._create_svg_icon(SVG_PIP) 
+        self.icons['playlist'] = self._create_svg_icon(SVG_PLAYLIST) # 👑 载入新图标
 
     def init_ui(self):
         shadow = QGraphicsDropShadowEffect(self)
@@ -144,8 +144,9 @@ class HUDPanel(QWidget):
         btns_row = QHBoxLayout()
         btns_row.setContentsMargins(0, 0, 0, 0)
         
+        # 👑 扩展左侧音量区到 200px 保持完美对称
         self.vol_group = QWidget()
-        self.vol_group.setFixedWidth(160)
+        self.vol_group.setFixedWidth(200)
         vol_layout = QHBoxLayout(self.vol_group)
         vol_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -163,6 +164,8 @@ class HUDPanel(QWidget):
         
         vol_layout.addWidget(self.mute_btn)
         vol_layout.addWidget(self.vol_slider)
+        # 右侧加一点弹性空间
+        vol_layout.addStretch()
         
         self.center_btns = QWidget()
         center_layout = QHBoxLayout(self.center_btns)
@@ -188,8 +191,9 @@ class HUDPanel(QWidget):
         center_layout.addWidget(self.play_btn)
         center_layout.addWidget(self.forward_btn)
         
+        # 👑 扩展右侧工具区到 200px 容纳五个按钮
         self.right_utils = QWidget()
-        self.right_utils.setFixedWidth(160) 
+        self.right_utils.setFixedWidth(200) 
         util_layout = QHBoxLayout(self.right_utils)
         util_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         util_layout.setContentsMargins(0, 0, 0, 0)
@@ -205,6 +209,12 @@ class HUDPanel(QWidget):
         self.pip_btn.setIconSize(QSize(20, 20))
         self.pip_btn.setFixedSize(30, 30)
 
+        # 👑 新增：播放列表专属按钮
+        self.playlist_btn = QPushButton()
+        self.playlist_btn.setIcon(self.icons['playlist'])
+        self.playlist_btn.setIconSize(QSize(20, 20))
+        self.playlist_btn.setFixedSize(30, 30)
+
         self.settings_btn = QPushButton()
         self.settings_btn.setIcon(self.icons['settings'])
         self.settings_btn.setIconSize(QSize(20, 20))
@@ -217,6 +227,7 @@ class HUDPanel(QWidget):
         
         util_layout.addWidget(self.subtitle_btn)
         util_layout.addWidget(self.pip_btn)
+        util_layout.addWidget(self.playlist_btn) # 加入布局
         util_layout.addWidget(self.settings_btn)
         util_layout.addWidget(self.fullscreen_btn)
 
@@ -237,7 +248,6 @@ class HUDPanel(QWidget):
         self.total_time_label.setFixedWidth(42)
         self.total_time_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         
-        # 👑 替换为我们写的高级 HoverSlider
         self.progress_slider = HoverSlider(Qt.Horizontal)
         self.progress_slider.setObjectName("ProgressBar")
         self.progress_slider.setRange(0, 1000)
@@ -260,6 +270,7 @@ class HUDPanel(QWidget):
         
         self.subtitle_btn.clicked.connect(self.subtitle_requested.emit)
         self.pip_btn.clicked.connect(self.pip_requested.emit)
+        self.playlist_btn.clicked.connect(self.playlist_requested.emit) # 连线新按钮
 
     def toggle_play_ui(self):
         self.is_playing = not self.is_playing
@@ -287,7 +298,6 @@ class HUDPanel(QWidget):
 
     def update_progress(self, current, total):
         if total > 0:
-            # 传递总时长给 HoverSlider 用于计算
             self.progress_slider.total_time = total
             self.curr_time_label.setText(self.format_time(current))
             self.total_time_label.setText(self.format_time(total))
@@ -326,6 +336,7 @@ class HUDPanel(QWidget):
     def set_pip_mode(self, is_pip):
         self.vol_slider.setVisible(not is_pip)
         self.subtitle_btn.setVisible(not is_pip)
+        self.playlist_btn.setVisible(not is_pip) # 画中画隐藏播放列表按钮
         self.settings_btn.setVisible(not is_pip)
         self.fullscreen_btn.setVisible(not is_pip)
         
@@ -334,6 +345,6 @@ class HUDPanel(QWidget):
             self.right_utils.setFixedWidth(40)
             self.setFixedHeight(85)
         else:
-            self.vol_group.setFixedWidth(160)
-            self.right_utils.setFixedWidth(160)
+            self.vol_group.setFixedWidth(200) # 恢复200
+            self.right_utils.setFixedWidth(200) # 恢复200
             self.setFixedHeight(100)

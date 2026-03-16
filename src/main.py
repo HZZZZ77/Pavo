@@ -48,6 +48,7 @@ class PavoPlayer(QMainWindow):
         self._is_pip = False
         self._normal_geometry = None
         self._playlist_was_visible = False
+        self._drag_active = False
         
         self.data_file = os.path.join(os.path.expanduser("~"), ".pavo_data.json")
         self.history = {}
@@ -426,6 +427,9 @@ class PavoPlayer(QMainWindow):
         self.engine.seek_to_percent(max(0, min(total, curr + seconds)) / total)
 
     def toggle_fullscreen(self):
+        if self._is_pip:
+            self.toggle_pip()
+            return
         if self.isFullScreen(): self.showNormal()
         else: self.showFullScreen()
         self.resizeEvent(None)
@@ -434,14 +438,37 @@ class PavoPlayer(QMainWindow):
         if not self._is_pip:
             self._normal_geometry = self.geometry()
             self._is_pip = True
-            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-            self.showNormal()
-            self.resize(480, 270)
+            
+            if self.playlist_ui.isVisible():
+                self.playlist_ui.hide()
+                self._playlist_was_visible = True
+            else:
+                self._playlist_was_visible = False
+                
+            aspect = self.video_canvas.width() / max(1, self.video_canvas.height())
+            pip_w = 480
+            pip_h = int(pip_w / aspect)
+            
+            self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+            
+            screen_geom = QApplication.primaryScreen().availableGeometry()
+            x = screen_geom.width() - pip_w - 20
+            y = screen_geom.height() - pip_h - 20
+            
+            self.setGeometry(x, y, pip_w, pip_h)
+            self.show()
+            self.show_osd("📺 Picture-in-Picture Mode")
         else:
             self._is_pip = False
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
-            if self._normal_geometry: self.setGeometry(self._normal_geometry)
-        self.show()
+            self.setWindowFlags(Qt.Window)
+            if self._normal_geometry: 
+                self.setGeometry(self._normal_geometry)
+            self.show()
+            if getattr(self, '_playlist_was_visible', False):
+                self.playlist_ui.show()
+            
+            # 👑 修复：退出画中画时更新 OSD 提示，防止文本残留
+            self.show_osd("📺 Standard View")
 
     def show_subtitle_menu(self):
         menu = self._create_styled_menu()
@@ -516,7 +543,19 @@ class PavoPlayer(QMainWindow):
                 self.hud.move((self.width() - hud_w) // 2, self.height() - self.hud.height() - 40)
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.MouseMove: self.wake_hud()
+        if event.type() == QEvent.MouseMove: 
+            self.wake_hud()
+            
+        if self._is_pip:
+            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                if obj == self.video_canvas or obj == self.central_widget:
+                    self._drag_active = True
+                    self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            elif event.type() == QEvent.MouseMove and getattr(self, '_drag_active', False):
+                self.move(event.globalPosition().toPoint() - self._drag_pos)
+            elif event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
+                self._drag_active = False
+
         return super().eventFilter(obj, event)
 
     def leaveEvent(self, event):

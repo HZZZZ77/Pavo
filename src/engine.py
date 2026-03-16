@@ -19,6 +19,8 @@ class PavoEngine:
                 demuxer_max_back_bytes="50M"
             )
             self.playback_speed = 1.0
+            # 👑 记录当前的画面比例状态，默认为 Auto
+            self.current_aspect = "Auto"
             print(f"[Engine] Initialization successful. (mpv version: {self.player.mpv_version})")
         except Exception as e:
             print(f"[Engine] Error: Initialization failed - {e}")
@@ -74,21 +76,34 @@ class PavoEngine:
             pass
 
     # ==========================================
-    # 👑 V0.9.4 新增：轨道读取与切换系统
+    # 👑 新增：画面比例强制覆盖
+    # ==========================================
+    def set_aspect_ratio(self, ratio: str):
+        if self.player:
+            try:
+                self.current_aspect = ratio
+                if ratio == "Auto":
+                    # mpv 中使用 "-1" 代表恢复视频的原始默认比例
+                    self.player.video_aspect_override = "-1"
+                else:
+                    self.player.video_aspect_override = ratio
+                print(f"[Engine] Aspect ratio set to: {ratio}")
+            except Exception as e:
+                print(f"[Engine] Error setting aspect ratio: {e}")
+
+    # ==========================================
+    # 轨道读取与切换系统
     # ==========================================
     def get_tracks(self, track_type):
-        """解析引擎内部的轨道列表"""
         tracks = []
         try:
             if not self.player: return tracks
-            # 遍历 mpv 内部维护的所有媒体轨道
             for t in getattr(self.player, 'track_list', []):
                 if t.get('type') == track_type:
                     t_id = t.get('id')
                     lang = t.get('lang', '')
                     title = t.get('title', '')
                     
-                    # 组合出一个人类可读的轨道名称
                     if title and lang: name = f"[{lang}] {title}"
                     elif title: name = title
                     elif lang: name = f"Track {t_id} ({lang})"
@@ -126,7 +141,6 @@ class PavoEngine:
                 print(f"[Engine] Error setting subtitle track: {e}")
 
     def add_external_subtitle(self, file_path):
-        """挂载外部字幕文件"""
         if self.player:
             try:
                 self.player.sub_add(file_path)

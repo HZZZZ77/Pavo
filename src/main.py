@@ -26,7 +26,6 @@ class PavoPlayer(QMainWindow):
         self.hud_timer.setInterval(2000)
         self.hud_timer.timeout.connect(self.hide_hud)
         
-        # 用于记录画中画状态和恢复前的尺寸
         self._is_pip = False
         self._normal_geometry = None
 
@@ -67,7 +66,6 @@ class PavoPlayer(QMainWindow):
         self.top_osd.adjustSize()
         self.top_osd.raise_()
 
-        # 动画引擎
         self.opacity_effect = QGraphicsOpacityEffect(self.hud)
         self.opacity_effect.setOpacity(1.0)
         self.hud.setGraphicsEffect(self.opacity_effect)
@@ -93,7 +91,6 @@ class PavoPlayer(QMainWindow):
         self.hud.skip_requested.connect(self.on_skip)
         self.hud.fullscreen_requested.connect(self.toggle_fullscreen)
         
-        # 连接新的 CC 和 PiP 按钮信号
         if hasattr(self.hud, 'settings_btn'):
             self.hud.settings_btn.clicked.connect(self.show_settings_menu)
         if hasattr(self.hud, 'subtitle_btn'):
@@ -116,11 +113,10 @@ class PavoPlayer(QMainWindow):
         self.timer.start(500)
 
     # ==========================================
-    # 👑 画中画模式 (PiP) 核心逻辑与精简模式切换
+    # 画中画模式 (PiP)
     # ==========================================
     def toggle_pip(self):
         if not self._is_pip:
-            # 开启画中画
             self._normal_geometry = self.geometry()
             self._is_pip = True
             
@@ -129,7 +125,6 @@ class PavoPlayer(QMainWindow):
             self.resize(480, 270) 
             self.show()
             
-            # 命令 HUD 进入精简模式
             if hasattr(self.hud, 'set_pip_mode'):
                 self.hud.set_pip_mode(True)
             
@@ -138,22 +133,18 @@ class PavoPlayer(QMainWindow):
             self.resizeEvent(None)
             self.wake_hud()
         else:
-            # 退出画中画
             self._is_pip = False
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
             if self._normal_geometry:
                 self.setGeometry(self._normal_geometry)
             self.show()
             
-            # 命令 HUD 恢复完全体
             if hasattr(self.hud, 'set_pip_mode'):
                 self.hud.set_pip_mode(False)
                 
-            # 👑 核心修复：强制取消用户的拖拽状态，让面板乖乖回到默认底部中央！
             if hasattr(self.hud, '_user_dragged'):
                 self.hud._user_dragged = False
                 
-            # 👑 核心修复：更新提示文字，并触发重新排版
             self.top_osd.setText("🔙 已恢复正常模式")
             self.top_osd.adjustSize()
             self.resizeEvent(None)
@@ -201,9 +192,6 @@ class PavoPlayer(QMainWindow):
             self.hud.toggle_play_ui()
         super().keyPressEvent(event)
 
-    # ==========================================
-    # 👑 独立出来的 CC 字幕菜单
-    # ==========================================
     def show_subtitle_menu(self):
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -249,7 +237,7 @@ class PavoPlayer(QMainWindow):
         menu.exec(btn_pos - QPoint(0, menu.sizeHint().height() + 10))
 
     # ==========================================
-    # 👑 设置菜单 (现在只管音轨和倍速)
+    # 👑 升级版设置菜单：增加画面比例
     # ==========================================
     def show_settings_menu(self):
         menu = QMenu(self)
@@ -270,6 +258,7 @@ class PavoPlayer(QMainWindow):
             }
         """)
 
+        # 1. 倍速播放
         speed_menu = menu.addMenu("⏩ 倍速播放")
         speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
         current_speed = getattr(self.engine, 'playback_speed', 1.0)
@@ -280,6 +269,18 @@ class PavoPlayer(QMainWindow):
             action.triggered.connect(lambda checked, val=s: self.change_speed(val))
             speed_menu.addAction(action)
 
+        # 2. 👑 画面比例切换
+        aspect_menu = menu.addMenu("📺 画面比例")
+        aspects = ["Auto", "16:9", "4:3", "21:9", "9:16", "1:1"]
+        current_aspect = getattr(self.engine, 'current_aspect', 'Auto')
+        for r in aspects:
+            action = QAction(r, self)
+            action.setCheckable(True)
+            if r == current_aspect: action.setChecked(True)
+            action.triggered.connect(lambda checked, val=r: self.change_aspect_ratio(val))
+            aspect_menu.addAction(action)
+
+        # 3. 音轨切换
         audio_tracks = self.engine.get_audio_tracks()
         if audio_tracks:
             audio_menu = menu.addMenu("🎧 切换音轨")
@@ -298,6 +299,17 @@ class PavoPlayer(QMainWindow):
             self.engine.set_speed(speed)
             self.engine.playback_speed = speed 
 
+    # 👑 新增：比例切换触发器
+    def change_aspect_ratio(self, ratio):
+        if hasattr(self.engine, 'set_aspect_ratio'):
+            self.engine.set_aspect_ratio(ratio)
+            # 优雅地给用户反馈
+            ratio_text = "默认" if ratio == "Auto" else ratio
+            self.top_osd.setText(f"📺 画面比例已切换为：{ratio_text}")
+            self.top_osd.adjustSize()
+            self.resizeEvent(None)
+            self.wake_hud()
+
     def resizeEvent(self, event):
         if event: super().resizeEvent(event)
         if hasattr(self, 'top_osd'):
@@ -308,7 +320,6 @@ class PavoPlayer(QMainWindow):
             hud_w = min(600, self.width() - 40)
             self.hud.setFixedWidth(hud_w)
             
-            # 这一行就是靠 _user_dragged 决定要不要居中的！
             if not getattr(self.hud, '_user_dragged', False):
                 x = (self.width() - hud_w) // 2
                 y = self.height() - self.hud.height() - 40

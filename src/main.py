@@ -55,6 +55,7 @@ class PavoPlayer(QMainWindow):
         self.data_file = os.path.join(os.path.expanduser("~"), ".pavo_data.json")
         self.history = {}
         self.playlist = []
+        self.recent_files = []
         self.current_idx = -1
         self.pending_seek = 0
 
@@ -209,7 +210,10 @@ class PavoPlayer(QMainWindow):
         self.open_file_action = QAction("Open File...", self)
         self.open_file_action.setShortcut(QKeySequence.Open)
         self.open_file_action.triggered.connect(self.open_files)
-        self.menuBar().addMenu("File").addAction(self.open_file_action)
+        self.file_menu = self.menuBar().addMenu("File")
+        self.file_menu.addAction(self.open_file_action)
+        self.recent_menu = self.file_menu.addMenu("Recent Files")
+        self.update_recent_files_menu()
         self.addAction(self.open_file_action)
 
         self.timer = QTimer(self)
@@ -296,11 +300,14 @@ class PavoPlayer(QMainWindow):
                     data = json.load(f)
                     self.history = data.get("history", {})
                     self.playlist = data.get("playlist", [])
+                    self.recent_files = data.get("recent_files", [])
             except: pass
+        self.recent_files = [path for path in self.recent_files if os.path.exists(path)][:20]
         self.refresh_playlist_ui()
+        self.update_recent_files_menu()
 
     def save_data(self):
-        data = { "playlist": self.playlist, "history": self.history }
+        data = { "playlist": self.playlist, "history": self.history, "recent_files": self.recent_files }
         try:
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False)
@@ -333,6 +340,53 @@ class PavoPlayer(QMainWindow):
         if file_paths:
             self.handle_dropped_files(file_paths)
 
+    def add_recent_files(self, file_paths):
+        valid_paths = [path for path in file_paths if os.path.exists(path)]
+        for path in reversed(valid_paths):
+            if path in self.recent_files:
+                self.recent_files.remove(path)
+            self.recent_files.insert(0, path)
+        self.recent_files = self.recent_files[:20]
+        self.update_recent_files_menu()
+        self.save_data()
+
+    def update_recent_files_menu(self):
+        if not hasattr(self, 'recent_menu'):
+            return
+        valid_paths = []
+        for path in self.recent_files:
+            if os.path.exists(path) and path not in valid_paths:
+                valid_paths.append(path)
+        self.recent_files = valid_paths[:20]
+
+        self.recent_menu.clear()
+        if not self.recent_files:
+            empty_act = QAction("No Recent Files", self)
+            empty_act.setEnabled(False)
+            self.recent_menu.addAction(empty_act)
+            return
+
+        for path in self.recent_files:
+            act = QAction(os.path.basename(path), self)
+            act.setToolTip(path)
+            act.triggered.connect(lambda checked=False, p=path: self.open_recent_file(p))
+            self.recent_menu.addAction(act)
+
+    def open_recent_file(self, file_path):
+        if not os.path.exists(file_path):
+            if file_path in self.recent_files:
+                self.recent_files.remove(file_path)
+            self.update_recent_files_menu()
+            self.save_data()
+            return
+
+        if file_path not in self.playlist:
+            self.playlist.append(file_path)
+            self.refresh_playlist_ui()
+        self.add_recent_files([file_path])
+        self.current_idx = self.playlist.index(file_path)
+        self.load_local_video(file_path)
+
     def handle_dropped_files(self, file_paths):
         if not file_paths: return
         subs = [f for f in file_paths if os.path.splitext(f)[1].lower() in ['.srt', '.ass', '.vtt']]
@@ -345,6 +399,7 @@ class PavoPlayer(QMainWindow):
 
         self.playlist.extend(videos)
         self.playlist = list(dict.fromkeys(self.playlist))
+        self.add_recent_files(videos)
         self.refresh_playlist_ui()
         
         self._playlist_was_visible = True

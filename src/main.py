@@ -7,8 +7,8 @@ bootstrap.setup_pavo_env()
 from PySide6.QtWidgets import (QApplication, QMainWindow, QGridLayout, QWidget, 
                              QGraphicsOpacityEffect, QMenu, QLabel, QVBoxLayout,
                              QGraphicsDropShadowEffect, QListWidget, QListWidgetItem,
-                             QAbstractItemView)
-from PySide6.QtGui import QSurfaceFormat, QAction, QKeyEvent, QPixmap, QPainter, QPainterPath, QColor
+                             QAbstractItemView, QFileDialog)
+from PySide6.QtGui import QSurfaceFormat, QAction, QKeyEvent, QPixmap, QPainter, QPainterPath, QColor, QKeySequence
 from PySide6.QtCore import Qt, QTimer, QEvent, QPropertyAnimation, QEasingCurve, QPoint, QUrl
 
 from engine import PavoEngine
@@ -206,6 +206,12 @@ class PavoPlayer(QMainWindow):
         if hasattr(self.video_canvas, 'double_clicked'): self.video_canvas.double_clicked.connect(self.toggle_fullscreen)
         self.video_canvas.files_dropped.connect(self.handle_dropped_files)
 
+        self.open_file_action = QAction("Open File...", self)
+        self.open_file_action.setShortcut(QKeySequence.Open)
+        self.open_file_action.triggered.connect(self.open_files)
+        self.menuBar().addMenu("File").addAction(self.open_file_action)
+        self.addAction(self.open_file_action)
+
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.sync_progress)
         self.timer.start(500)
@@ -317,6 +323,16 @@ class PavoPlayer(QMainWindow):
             self.current_idx += 1
             self.load_local_video(self.playlist[self.current_idx])
 
+    def open_files(self):
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Open File",
+            os.path.expanduser("~"),
+            "Media Files (*.mp4 *.mkv *.mov *.avi *.m4v *.webm *.mp3 *.flac *.wav *.aac *.srt *.ass *.vtt);;All Files (*)"
+        )
+        if file_paths:
+            self.handle_dropped_files(file_paths)
+
     def handle_dropped_files(self, file_paths):
         if not file_paths: return
         subs = [f for f in file_paths if os.path.splitext(f)[1].lower() in ['.srt', '.ass', '.vtt']]
@@ -335,7 +351,7 @@ class PavoPlayer(QMainWindow):
         self.playlist_ui.show()
         self.pl_fade_anim.setEndValue(1.0); self.pl_fade_anim.start()
         
-        if self.current_idx == -1:
+        if self.current_idx == -1 or not self.engine.current_media_path:
             self.current_idx = self.playlist.index(videos[0])
             self.load_local_video(self.playlist[self.current_idx])
 

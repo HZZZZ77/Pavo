@@ -40,6 +40,8 @@ class PavoPlayer(QMainWindow):
         self.engine.thumbnail_ready.connect(self._on_thumbnail_ready)
         self.engine.file_ended.connect(self._on_file_ended)
         self.engine.file_loaded.connect(self._on_file_loaded)
+        self.engine.error_occurred.connect(self.show_error)
+        self.engine.play_state_changed.connect(self._sync_play_button)
         
         self.hud_timer = QTimer(self)
         self.hud_timer.setInterval(2000)
@@ -58,6 +60,8 @@ class PavoPlayer(QMainWindow):
 
         self.init_ui()
         self.load_data()
+        if getattr(self.engine, "init_error", None):
+            QTimer.singleShot(0, lambda: self.show_error("Playback engine failed to initialize. Please check mpv installation."))
 
         QApplication.instance().installEventFilter(self)
         self.hud_timer.start()
@@ -262,6 +266,9 @@ class PavoPlayer(QMainWindow):
         self.playlist = new_list
         if self.engine.current_media_path in self.playlist:
             self.current_idx = self.playlist.index(self.engine.current_media_path)
+        else:
+            self.current_idx = -1
+            self.playlist_ui.clearSelection()
         self.save_data()
 
     def toggle_playlist(self):
@@ -355,11 +362,20 @@ class PavoPlayer(QMainWindow):
     def load_local_video(self, file_path):
         self.show_osd(f"🎬 Now playing: {os.path.basename(file_path)}")
         self.pending_seek = self.history.get(file_path, 0)
-        self.engine.play(file_path)
+        if not self.engine.play(file_path):
+            self.pending_seek = 0
+            return
         self.update_playlist_ui_selection()
         if hasattr(self.hud, 'is_playing'):
-            self.hud.is_playing = True
-            self.hud.play_btn.setIcon(self.hud.icons['pause'])
+            self._sync_play_button(True)
+
+    def _sync_play_button(self, is_playing):
+        if hasattr(self, 'hud') and hasattr(self.hud, 'play_btn'):
+            self.hud.is_playing = is_playing
+            self.hud.play_btn.setIcon(self.hud.icons['pause'] if is_playing else self.hud.icons['play'])
+
+    def show_error(self, text):
+        self.show_osd(f"⚠️ {text}")
 
     def show_osd(self, text):
         self.top_osd.setText(text)
@@ -407,12 +423,12 @@ class PavoPlayer(QMainWindow):
             self.on_skip(-10)
             self.show_osd("⏪ Rewind 10s")
         elif key == Qt.Key_Up:
-            new_vol = min(100, self.hud.volume_slider.value() + 5)
-            self.hud.volume_slider.setValue(new_vol)
+            new_vol = min(100, self.hud.vol_slider.value() + 5)
+            self.hud.vol_slider.setValue(new_vol)
             self.show_osd(f"🔊 Volume: {new_vol}%")
         elif key == Qt.Key_Down:
-            new_vol = max(0, self.hud.volume_slider.value() - 5)
-            self.hud.volume_slider.setValue(new_vol)
+            new_vol = max(0, self.hud.vol_slider.value() - 5)
+            self.hud.vol_slider.setValue(new_vol)
             self.show_osd(f"🔉 Volume: {new_vol}%")
         elif key in [Qt.Key_Delete, Qt.Key_Backspace]:
             if self.playlist_ui.hasFocus():
@@ -457,6 +473,8 @@ class PavoPlayer(QMainWindow):
             
             self.setGeometry(x, y, pip_w, pip_h)
             self.show()
+            if hasattr(self.hud, 'set_pip_mode'):
+                self.hud.set_pip_mode(True)
             self.show_osd("📺 Picture-in-Picture Mode")
         else:
             self._is_pip = False
@@ -464,6 +482,8 @@ class PavoPlayer(QMainWindow):
             if self._normal_geometry: 
                 self.setGeometry(self._normal_geometry)
             self.show()
+            if hasattr(self.hud, 'set_pip_mode'):
+                self.hud.set_pip_mode(False)
             if getattr(self, '_playlist_was_visible', False):
                 self.playlist_ui.show()
             

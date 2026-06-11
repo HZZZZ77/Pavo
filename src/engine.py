@@ -15,6 +15,8 @@ class PavoEngine(QObject):
     # 👑 新增：向外界汇报播放状态的专线
     file_ended = Signal()
     file_loaded = Signal()
+    error_occurred = Signal(str)
+    play_state_changed = Signal(bool)
 
     def __init__(self):
         super().__init__()
@@ -36,9 +38,13 @@ class PavoEngine(QObject):
             # 👑 埋入探针：监听视频结尾和加载完成
             self.player.observe_property('eof-reached', self._on_eof)
             self.player.observe_property('duration', self._on_duration)
+            self.player.observe_property('pause', self._on_pause)
             
         except Exception as e:
             self.player = None
+            self.init_error = str(e)
+        else:
+            self.init_error = None
 
     def _on_eof(self, name, value):
         if value:
@@ -48,11 +54,29 @@ class PavoEngine(QObject):
         if value is not None and value > 0:
             self.file_loaded.emit()
 
+    def _on_pause(self, name, value):
+        if value is not None:
+            self.play_state_changed.emit(not value)
+
     def play(self, media_path):
-        if self.player:
+        if not self.player:
+            self.error_occurred.emit("Playback engine failed to initialize.")
+            return False
+
+        if not os.path.exists(media_path):
+            self.error_occurred.emit(f"File not found: {os.path.basename(media_path)}")
+            return False
+
+        try:
             self.current_media_path = media_path
             self.thumb_cache.clear()
             self.player.play(media_path)
+            self.player.pause = False
+            self.play_state_changed.emit(True)
+            return True
+        except Exception as e:
+            self.error_occurred.emit(f"Playback failed: {e}")
+            return False
 
     def get_thumbnail(self, time_sec):
         if not self.current_media_path: return
@@ -81,7 +105,8 @@ class PavoEngine(QObject):
                         elif os.path.exists('/usr/local/bin/ffmpeg'):
                             ffmpeg_cmd = '/usr/local/bin/ffmpeg'
                         else:
-                            ffmpeg_cmd = 'ffmpeg'
+                            self.error_occurred.emit("FFmpeg not found. Thumbnail preview is unavailable.")
+                            return
                             
                 cmd = [
                     ffmpeg_cmd, '-y', '-ss', str(time_key), '-i', self.current_media_path,

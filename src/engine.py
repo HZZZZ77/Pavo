@@ -11,7 +11,7 @@ import mpv
 from PySide6.QtCore import QObject, Signal
 
 class PavoEngine(QObject):
-    thumbnail_ready = Signal(int, bytes)
+    thumbnail_ready = Signal(str, int, int, bytes)
     # 👑 新增：向外界汇报播放状态的专线
     file_ended = Signal()
     file_loaded = Signal()
@@ -20,6 +20,11 @@ class PavoEngine(QObject):
 
     def __init__(self):
         super().__init__()
+        self.thumb_cache = {}
+        self.thumb_inflight = set()
+        self.thumb_lock = threading.Lock()
+        self.thumbnail_generation_id = 0
+        self.current_media_path = None
         try:
             self.player = mpv.MPV(
                 hwdec="auto",
@@ -31,9 +36,6 @@ class PavoEngine(QObject):
             )
             self.playback_speed = 1.0
             self.current_aspect = "Auto"
-            
-            self.thumb_cache = {}
-            self.current_media_path = None
             
             # 👑 埋入探针：监听视频结尾和加载完成
             self.player.observe_property('eof-reached', self._on_eof)
@@ -68,8 +70,11 @@ class PavoEngine(QObject):
             return False
 
         try:
-            self.current_media_path = media_path
-            self.thumb_cache.clear()
+            with self.thumb_lock:
+                self.thumbnail_generation_id += 1
+                self.current_media_path = media_path
+                self.thumb_cache.clear()
+                self.thumb_inflight.clear()
             self.player.play(media_path)
             self.player.pause = False
             self.play_state_changed.emit(True)
@@ -79,11 +84,22 @@ class PavoEngine(QObject):
             return False
 
     def get_thumbnail(self, time_sec):
-        if not self.current_media_path: return
-        time_key = int(time_sec)
-        
-        if time_key in self.thumb_cache:
-            self.thumbnail_ready.emit(time_key, self.thumb_cache[time_key])
+        with self.thumb_lock:
+            media_path = self.current_media_path
+            generation_id = self.thumbnail_generation_id
+            if not media_path: return
+            time_key = int(time_sec)
+            request_key = (media_path, time_key)
+            if request_key in self.thumb_cache:
+                cached = self.thumb_cache[request_key]
+            else:
+                cached = None
+                if request_key in self.thumb_inflight:
+                    return
+                self.thumb_inflight.add(request_key)
+
+        if cached is not None:
+            self.thumbnail_ready.emit(media_path, generation_id, time_key, cached)
             return
 
         def _extract():
@@ -109,7 +125,7 @@ class PavoEngine(QObject):
                             return
                             
                 cmd = [
-                    ffmpeg_cmd, '-y', '-ss', str(time_key), '-i', self.current_media_path,
+                    ffmpeg_cmd, '-y', '-ss', str(time_key), '-i', media_path,
                     '-vframes', '1', '-q:v', '2', '-vf', 'scale=160:-1', '-f', 'image2', 'pipe:1'
                 ]
                 startupinfo = None
@@ -120,17 +136,42 @@ class PavoEngine(QObject):
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, startupinfo=startupinfo)
                 out, _ = process.communicate()
                 
+                should_emit = False
                 if out:
-                    self.thumb_cache[time_key] = out
-                    self.thumbnail_ready.emit(time_key, out)
+                    with self.thumb_lock:
+                        should_emit = media_path == self.current_media_path and generation_id == self.thumbnail_generation_id
+                        if not should_emit:
+                            return
+                        self.thumb_cache[request_key] = out
+                if should_emit:
+                    self.thumbnail_ready.emit(media_path, generation_id, time_key, out)
             except Exception as e:
                 print(f"[Engine] Extract error: {e}")
+            finally:
+                with self.thumb_lock:
+                    self.thumb_inflight.discard(request_key)
                 
         threading.Thread(target=_extract, daemon=True).start()
 
     def set_playing(self, is_playing: bool):
         if self.player:
             self.player.pause = not is_playing
+
+    def stop(self):
+        with self.thumb_lock:
+            self.thumbnail_generation_id += 1
+            self.current_media_path = None
+            self.thumb_cache.clear()
+            self.thumb_inflight.clear()
+        if self.player:
+            try:
+                self.player.command('stop')
+            except:
+                try:
+                    self.player.stop()
+                except:
+                    pass
+        self.play_state_changed.emit(False)
 
     def set_volume(self, volume: int):
         if self.player:

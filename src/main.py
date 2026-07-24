@@ -214,6 +214,9 @@ class PavoPlayer(QMainWindow):
         self.file_menu.addAction(self.open_file_action)
         self.recent_menu = self.file_menu.addMenu("Recent Files")
         self.update_recent_files_menu()
+        self.clear_playlist_action = QAction("Clear Playlist", self)
+        self.clear_playlist_action.triggered.connect(self.clear_playlist)
+        self.file_menu.addAction(self.clear_playlist_action)
         self.addAction(self.open_file_action)
 
         self.timer = QTimer(self)
@@ -270,6 +273,23 @@ class PavoPlayer(QMainWindow):
         items = self.playlist_ui.selectedItems()
         for item in items: self.playlist_ui.takeItem(self.playlist_ui.row(item))
         self._sync_playlist_order()
+
+    def clear_playlist(self):
+        self.engine.stop()
+        self.playlist = []
+        self.current_idx = -1
+        self.pending_seek = 0
+        self.playlist_ui.clear()
+        self.playlist_ui.clearSelection()
+        self.reset_thumbnail_preview()
+        self.hud.progress_slider.total_time = 0
+        self.hud.progress_slider.setValue(0)
+        self.hud.curr_time_label.setText("00:00")
+        self.hud.total_time_label.setText("00:00")
+        self.video_canvas.update()
+        self._sync_play_button(False)
+        self.save_data()
+        self.show_osd("Playlist cleared")
 
     def _sync_playlist_order(self, *args):
         new_list = [self.playlist_ui.item(i).toolTip() for i in range(self.playlist_ui.count())]
@@ -430,7 +450,14 @@ class PavoPlayer(QMainWindow):
         self.pl_fade_anim.setEndValue(0.0); self.pl_fade_anim.start()
         QTimer.singleShot(300, self.playlist_ui.hide)
 
+    def reset_thumbnail_preview(self):
+        self.thumb_timer.stop()
+        self.thumb_popup.hide()
+        self.thumb_label.clear()
+        self._current_hover_time = 0
+
     def load_local_video(self, file_path):
+        self.reset_thumbnail_preview()
         self.show_osd(f"🎬 Now playing: {os.path.basename(file_path)}")
         self.pending_seek = self.history.get(file_path, 0)
         if not self.engine.play(file_path):
@@ -466,6 +493,7 @@ class PavoPlayer(QMainWindow):
 
     def _on_hover_moved(self, time_sec, local_x):
         self._current_hover_time = time_sec
+        self.thumb_label.clear()
         self.thumb_time_label.setText(self._format_time(time_sec))
         slider = self.hud.progress_slider
         slider_global = slider.mapToGlobal(QPoint(local_x, 0))
@@ -475,9 +503,17 @@ class PavoPlayer(QMainWindow):
         self.thumb_timer.start()
 
     def _request_thumbnail(self):
+        if not self.engine.current_media_path:
+            return
         self.engine.get_thumbnail(self._current_hover_time)
 
-    def _on_thumbnail_ready(self, time_key, img_bytes):
+    def _on_thumbnail_ready(self, media_path, generation_id, time_key, img_bytes):
+        if not self.engine.current_media_path:
+            return
+        if media_path != self.engine.current_media_path:
+            return
+        if generation_id != self.engine.thumbnail_generation_id:
+            return
         if abs(time_key - int(self._current_hover_time)) <= 2:
             pixmap = QPixmap()
             pixmap.loadFromData(img_bytes)

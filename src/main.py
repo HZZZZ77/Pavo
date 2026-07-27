@@ -1,8 +1,11 @@
 import os
 import sys
 import json
+import logging
 import bootstrap
 bootstrap.setup_pavo_env()
+
+logger = logging.getLogger("pavo.main")
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QGridLayout, QWidget, 
                              QGraphicsOpacityEffect, QMenu, QLabel, QVBoxLayout,
@@ -321,7 +324,8 @@ class PavoPlayer(QMainWindow):
                     self.history = data.get("history", {})
                     self.playlist = data.get("playlist", [])
                     self.recent_files = data.get("recent_files", [])
-            except: pass
+            except Exception:
+                logger.exception("Failed to load Pavo application data")
         self.recent_files = [path for path in self.recent_files if os.path.exists(path)][:20]
         self.refresh_playlist_ui()
         self.update_recent_files_menu()
@@ -331,7 +335,8 @@ class PavoPlayer(QMainWindow):
         try:
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False)
-        except: pass
+        except Exception:
+            logger.exception("Failed to save Pavo application data")
 
     def closeEvent(self, event):
         self.save_data()
@@ -714,7 +719,10 @@ class PavoPlayer(QMainWindow):
                 self.playlist_ui.hide()
 
 if __name__ == "__main__":
+    logger.info("Pavo application starting")
     app = QApplication(sys.argv)
     window = PavoPlayer()
     window.show()
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    logger.info("Pavo application stopped with exit code %s", exit_code)
+    sys.exit(exit_code)

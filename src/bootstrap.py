@@ -1,12 +1,19 @@
 import os
 import locale
+import logging
+
+from logging_config import setup_logging
+
+
+logger = logging.getLogger("pavo.bootstrap")
 
 def setup_pavo_env():
     """为 Pavo 运行配置必要的 macOS 环境变量 (纯净开发版)"""
+    setup_logging()
     try:
         locale.setlocale(locale.LC_NUMERIC, 'C')
-    except:
-        pass
+    except Exception:
+        logger.exception("Failed to set the numeric locale to C")
 
     # 踏踏实实地使用系统里完好的 Homebrew mpv
     brew_paths = ["/opt/homebrew/lib", "/usr/local/lib"]
@@ -19,8 +26,6 @@ def setup_pavo_env():
     # 渲染后端配置
     os.environ["QSG_RHI_BACKEND"] = "opengl"
     os.environ["QT_MAC_WANTS_LAYER"] = "1"
-    
-    print("🚀 Pavo 环境引导完成 (开发模式)")
 
 if __name__ == "__main__":
     setup_pavo_env()

@@ -76,3 +76,80 @@ Pavo 的长期目标是成为一个轻量、稳定、具有 macOS 原生审美�
   - 有媒体时悬停进度条出现预览
   - 无媒体或 Clear Playlist 后不出现预览
 - 涉及打包时，检查 `Pavo.spec` 是否包含必要资源，并验证 `.app` 能启动、播放和显示图标。
+
+## Development Workflow
+
+所有开发任务必须通过 `docs/tasks/ACTIVE.md` 管理。
+
+### Phase 1 - Planning
+
+开始任何开发任务前：
+
+- 阅读 `docs/PRODUCT.md`。
+- 阅读 `AGENTS.md`。
+- 阅读 `docs/ROADMAP.md`。
+- 阅读 `docs/DECISIONS.md`。
+- 阅读 `docs/tasks/ACTIVE.md`。
+
+规划阶段：
+
+- 分析当前代码结构。
+- 明确修改范围。
+- 明确 Non Goals。
+- 明确 Acceptance Criteria。
+
+规划阶段禁止：
+
+- 修改源码。
+- 创建功能代码。
+- 执行无关重构。
+
+### Phase 2 - Implementation
+
+只有 Task Planning 明确后，才能修改代码。
+
+实施要求：
+
+- 严格遵守 `ACTIVE.md` 的 Scope。
+- 不修改 Non Goals 中禁止的内容。
+- 修改前检查 `git status`。
+- 修改后说明每个文件变化原因。
+
+### Phase 3 - Testing and Review
+
+完成实现后，必须报告：
+
+- 修改文件列表。
+- 修改原因。
+- 关键设计决策。
+- 测试命令。
+- 测试结果。
+- 已知风险。
+
+### Phase 4 - Completion
+
+任务完成后：
+
+- 更新 Task 状态为 Completed。
+- 将完成任务移动到 `docs/tasks/completed/`。
+- 保留 commit hash。
+- 不自动 commit，除非用户明确要求。
+
+## Task Communication Rules
+
+用户负责：
+
+- 产品方向。
+- 优先级。
+- 验收标准。
+
+AI 负责：
+
+- 技术方案。
+- 代码实现。
+- 测试建议。
+
+遇到不明确需求时：
+
+- 先提出问题。
+- 不自行扩大任务范围。

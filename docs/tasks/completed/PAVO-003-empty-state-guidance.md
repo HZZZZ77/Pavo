@@ -1,8 +1,4 @@
-# Active Task
-
-## Task ID
-
-`PAVO-003`
+# PAVO-003
 
 ## Title
 
@@ -10,15 +6,15 @@ Improve empty state guidance
 
 ## Status
 
-`Completed`
+Completed
 
 ## Priority
 
-`P1`
+P1
 
 ## Created
 
-`2026-07-27`
+2026-07-27
 
 ## Objective
 
@@ -39,11 +35,9 @@ Improve empty state guidance
 
 ## Scope
 
-允许修改：
-
-- `src/components/empty_state.py`（计划新增）
-- `src/main.py`
-- 可能新增 `assets` 中的 UI 资源（如确有需要）
+- 新增 `src/components/empty_state.py`。
+- 修改 `src/main.py`。
+- 未新增 `assets` UI 资源。
 
 ## Non Goals
 
@@ -52,22 +46,23 @@ Improve empty state guidance
 - 不修改 HUD。
 - 不增加媒体库。
 - 不增加账号、网络功能。
+- 不重做 UI，不增加欢迎页或复杂动画。
 
 ## Acceptance Criteria
 
-- 应用启动无媒体时显示新的空状态。
-- 拖入视频后空状态正确消失。
-- Clear Playlist 后正确恢复空状态。
-- `Cmd+O` 打开文件流程保持正常。
-- 不影响播放和视频渲染。
+- 应用启动无媒体时显示新的空状态：通过。
+- 拖入视频后空状态正确消失：通过。
+- Clear Playlist 后正确恢复空状态：通过。
+- `Cmd+O` 打开文件流程保持正常：通过。
+- 不影响播放和视频渲染：通过。
 
 ## Testing
 
-- `python3 -m compileall src`
-- 启动应用检查空状态。
-- 拖放视频测试。
-- `Cmd+O` 测试。
-- Clear Playlist 测试。
+运行：
+
+```bash
+python3 -m compileall src
+```
 
 测试结果：
 
@@ -76,14 +71,6 @@ Improve empty state guidance
 - 拖放：通过。
 - Clear Playlist：通过。
 
-## Notes
+## Commit
 
-这是 Pavo macOS 高级感方向的第一个任务。
-
-重点是提升第一印象，不追求复杂动画或大量视觉元素。
-
-- 保持当前 Pavo 极简 macOS 风格。
-- 不重做 UI。
-- 不增加欢迎页、媒体库、复杂动画。
-- 目标是补充首次使用引导。
-- Planning 已完成，方案通过 Review，准备进入 Implementation。
+`Pending`

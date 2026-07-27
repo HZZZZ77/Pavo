@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, QTimer, QEvent, QPropertyAnimation, QEasingCurve,
 
 from engine import PavoEngine
 from video_widget import PavoVideoWidget
+from components.empty_state import EmptyState
 from components.hud_panel import HUDPanel
 
 class PavoPlayer(QMainWindow):
@@ -80,6 +81,11 @@ class PavoPlayer(QMainWindow):
         self.video_canvas = PavoVideoWidget(self.engine)
         self.main_layout.addWidget(self.video_canvas, 0, 0)
 
+        self.empty_state = EmptyState(self.central_widget)
+        self.empty_state.open_requested.connect(self.open_files)
+        self.empty_state.files_dropped.connect(self.handle_dropped_files)
+        self.main_layout.addWidget(self.empty_state, 0, 0)
+
         self.hud = HUDPanel(self.central_widget)
 
         self.thumb_popup = QWidget(self.central_widget)
@@ -123,11 +129,12 @@ class PavoPlayer(QMainWindow):
 
         self.top_osd = QLabel(self.central_widget)
         self.top_osd.setAlignment(Qt.AlignCenter)
-        self.top_osd.setText("✨ Drop video files here to play")
+        self.top_osd.setText("")
         self.top_osd.setStyleSheet("""
             QLabel { background-color: rgba(40, 40, 40, 180); color: rgba(255, 255, 255, 230); border: 1px solid rgba(255, 255, 255, 30); border-radius: 12px; padding: 8px 20px; font-size: 14px; font-weight: 500; }
         """)
         self.top_osd.adjustSize()
+        self.top_osd.hide()
         self.top_osd.raise_()
 
         self.playlist_ui = QListWidget(self.central_widget)
@@ -164,6 +171,7 @@ class PavoPlayer(QMainWindow):
         self.playlist_ui.hide()
         self.playlist_ui.itemDoubleClicked.connect(self._on_playlist_item_clicked)
 
+        self.empty_state.raise_()
         self.playlist_ui.raise_()
         self.hud.raise_()
         self.thumb_popup.raise_()
@@ -291,6 +299,7 @@ class PavoPlayer(QMainWindow):
         self.hud.total_time_label.setText("00:00")
         self.video_canvas.update()
         self._sync_play_button(False)
+        self.empty_state.show()
         self.save_data()
         self.show_osd("Playlist cleared")
 
@@ -468,6 +477,7 @@ class PavoPlayer(QMainWindow):
         if not self.engine.play(file_path):
             self.pending_seek = 0
             return
+        self.empty_state.hide()
         self.update_playlist_ui_selection()
         if hasattr(self.hud, 'is_playing'):
             self._sync_play_button(True)
@@ -483,6 +493,8 @@ class PavoPlayer(QMainWindow):
     def show_osd(self, text):
         self.top_osd.setText(text)
         self.top_osd.adjustSize()
+        self.top_osd.show()
+        self.osd_opacity_effect.setOpacity(1.0)
         self.resizeEvent(None)
         self.wake_hud()
 

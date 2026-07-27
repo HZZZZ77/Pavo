@@ -42,7 +42,8 @@ class HoverSlider(QSlider):
 
     def enterEvent(self, event):
         super().enterEvent(event)
-        self.hover_entered.emit()
+        if self.total_time > 0:
+            self.hover_entered.emit()
 
     def leaveEvent(self, event):
         super().leaveEvent(event)

@@ -56,6 +56,10 @@ class PavoVideoWidget(QOpenGLWidget):
 
     def paintGL(self):
         try:
+            if not self.engine.current_media_path:
+                self._clear_to_black()
+                return
+
             if self.render_ctx:
                 self.render_ctx.update()
                 ratio = self.devicePixelRatio()
@@ -68,6 +72,14 @@ class PavoVideoWidget(QOpenGLWidget):
                     }
                 )
         except Exception: pass
+
+    def _clear_to_black(self):
+        ctx = QOpenGLContext.currentContext()
+        if not ctx:
+            return
+        funcs = ctx.functions()
+        funcs.glClearColor(0.0, 0.0, 0.0, 1.0)
+        funcs.glClear(0x00004000)
 
     def on_mpv_update(self):
         QMetaObject.invokeMethod(self, "update", Qt.QueuedConnection)

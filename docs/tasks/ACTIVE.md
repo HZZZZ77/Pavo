@@ -10,7 +10,7 @@ macOS Release Readiness Audit
 
 ## Status
 
-`Phase 1 Complete`
+`Phase 2C Implementation Complete - macOS 13 Host Validation Pending`
 
 ## Priority
 
@@ -49,6 +49,15 @@ macOS Release Readiness Audit
 - `requirements-build.txt`
 - `README.md`
 - `docs/tasks/ACTIVE.md`
+- `tools/media_runtime/`
+- `Pavo.spec`
+- `src/bootstrap.py`
+- `src/engine.py`
+- runtime integration documentation and validation helpers
+- Phase 2C dependency pins and macOS deployment-target validation
+- `requirements.txt`
+- `requirements-build.txt`
+- `README.md`
 
 ## Non Goals
 
@@ -58,6 +67,15 @@ macOS Release Readiness Audit
 - 不配置 Developer ID、entitlements、Hardened Runtime 或公证。
 - 不创建 DMG、GitHub Release 或公开发布产物。
 - 不支持 Intel 或 universal2。
+- Phase 2A 不修改 `Pavo.spec`，不把媒体运行时集成进应用包。
+- Phase 2A 不修改 `src/bootstrap.py`、`src/engine.py`、UI 或播放逻辑。
+- Phase 2B 不修改 UI、播放行为或 OpenGL 渲染实现。
+- Phase 2B 不处理 Developer ID 签名、Hardened Runtime、公证、DMG 或 GitHub Release。
+- Phase 2B 不支持 Intel 或 universal2，也不重新构建 Phase 2A 媒体运行时。
+- Phase 2C 不修改 UI、播放逻辑或媒体运行时实现。
+- Phase 2C 不开始签名、公证、DMG 或 GitHub Release 工作。
+- Phase 2C 不把最低系统要求提高到 macOS 15。
+- Phase 2C 不从源码构建 PySide6，除非合理的官方 wheel 组合全部失败。
 
 ## Acceptance Criteria
 
@@ -70,6 +88,36 @@ macOS Release Readiness Audit
 - 应用包不包含仓库中的 x86_64 `ffmpeg`。
 - 应用包不包含或复制 Homebrew `libmpv`。
 - `compileall` 和 `git diff --check` 通过。
+
+### Phase 2A Acceptance Criteria
+
+- mpv、FFmpeg 及必要构建依赖均固定版本和源码 SHA-256。
+- 单一脚本可从干净 clone 构建 arm64、macOS 13.0 的媒体运行时。
+- FFmpeg 与 mpv 使用 LGPL 兼容配置，不启用 GPL、version3 或 nonfree 组件。
+- `ffmpeg` 和 `libmpv.2.dylib` 不依赖 Homebrew、MacPorts 或 `/usr/local`。
+- manifest 记录源码、构建参数、工具版本、产物 SHA-256、动态依赖和许可证。
+- `file`、`vtool`、`otool` 与独立验证脚本检查通过。
+
+### Phase 2B Acceptance Criteria
+
+- `Pavo.app/Contents/Frameworks` 包含 Phase 2A 的 `libmpv.2.dylib` 和 `ffmpeg`。
+- `Pavo.app/Contents/Resources/media-runtime` 包含 manifest 和完整许可证目录。
+- 打包模式下 `python-mpv` 只加载 bundle 内的 `libmpv.2.dylib`。
+- 缩略图生成在打包模式下只使用 bundle 内的 `ffmpeg`。
+- 源码开发模式仍支持系统或显式配置的 libmpv 与 FFmpeg。
+- 应用包内所有 Mach-O 文件均不引用 Homebrew、`/opt/homebrew`、`/usr/local` 或 `/opt/local`。
+- `Pavo.spec` 在打包前校验媒体运行时输入与 Phase 2A manifest 的 SHA-256 一致。
+- bundle 内媒体产物通过架构、最低系统版本、install name、动态依赖、加载及执行验证；允许 PyInstaller 的 Mach-O 处理和临时 ad-hoc 签名改变文件哈希。
+- 应用能够启动，mpv 初始化成功，FFmpeg 和基础播放路径完成回归验证。
+
+### Phase 2C Acceptance Criteria
+
+- 明确记录 Python、PySide6、PySide6-Essentials、PySide6-Addons、shiboken6 与 PyInstaller 的固定版本和官方 wheel 来源。
+- 使用 `vtool` 扫描最终 `Pavo.app`，所有必要第三方 Mach-O 文件的最低系统版本均不高于 macOS 13.0。
+- 至少验证 Python 3.12、Python 3.13 与兼容的较早 PySide6 官方 wheel 组合。
+- 最终固定组合能够构建 arm64 `Pavo.app`，并通过启动、mpv 初始化、OpenGL、播放、Open File 和缩略图烟测。
+- 当前 UI、播放功能和 Phase 2B bundle 内媒体运行时保持不变。
+- README 与验证脚本准确记录固定工具链和 deployment target 检查方式。
 
 ## Testing
 
@@ -87,6 +135,65 @@ git diff --check
 - `file dist/Pavo.app/Contents/MacOS/Pavo`
 - 检查应用包中不存在 `ffmpeg` 和 `libmpv`。
 
+### Phase 2A Testing
+
+```bash
+python3.14 tools/media_runtime/build.py
+python3.14 tools/media_runtime/build.py --offline
+python3.14 tools/media_runtime/verify.py
+file build/media-runtime/dist/bin/ffmpeg
+file build/media-runtime/dist/lib/libmpv.2.dylib
+vtool -show-build build/media-runtime/dist/bin/ffmpeg
+vtool -show-build build/media-runtime/dist/lib/libmpv.2.dylib
+otool -L build/media-runtime/dist/bin/ffmpeg
+otool -L build/media-runtime/dist/lib/libmpv.2.dylib
+```
+
+### Phase 2B Testing
+
+```bash
+venv/bin/python -m compileall src tools/media_runtime
+venv/bin/python -m PyInstaller --clean --noconfirm Pavo.spec
+python3.14 tools/media_runtime/verify_bundle.py
+git diff --check
+```
+
+构建后检查：
+
+- 核对 `Contents/Frameworks` 中的 `libmpv.2.dylib` 和 `ffmpeg`。
+- 核对 `Contents/Resources/media-runtime` 中的 manifest 与许可证。
+- 使用 `file`、`vtool`、`otool` 和 SHA-256 检查 bundle 内媒体产物。
+- 启动 `Pavo.app`，确认使用 bundle 内 libmpv 且无需 Homebrew。
+- 回归打开媒体、播放/暂停、进度定位和缩略图预览。
+
+### Phase 2C Testing
+
+每个候选组合均在 `/private/tmp` 中创建独立干净虚拟环境，并执行：
+
+```bash
+<candidate-python> -m venv <candidate-venv>
+<candidate-venv>/bin/python -m pip install \
+  "PySide6==<candidate-version>" \
+  "python-mpv==1.0.8" \
+  "PyInstaller==6.19.0"
+<candidate-venv>/bin/python -m PyInstaller \
+  --clean --noconfirm \
+  --workpath <candidate-work> \
+  --distpath <candidate-dist> \
+  Pavo.spec
+python3.14 tools/media_runtime/verify_bundle.py \
+  <candidate-dist>/Pavo.app
+```
+
+通过自动检查的候选还需执行：
+
+- 启动应用并确认使用 bundle 内 `libmpv.2.dylib`。
+- 确认 OpenGL render context 初始化成功。
+- 通过 Open File 打开测试视频并完成播放烟测。
+- 悬停进度条并确认 bundle 内 FFmpeg 缩略图链路可用。
+- 运行 `venv/bin/python -m compileall src tools/media_runtime`。
+- 运行 `git diff --check`。
+
 ### Phase 1 Results
 
 - Python 3.14.2 全新虚拟环境创建成功。
@@ -100,18 +207,94 @@ git diff --check
 - `git diff --check` 通过。
 - 本阶段未进行应用运行验证；媒体运行仍依赖后续 arm64 libmpv 整合。
 
+### Phase 2A Results
+
+- mpv 0.41.0 与 FFmpeg 8.0.3 构建成功。
+- FreeType 2.14.2、FriBidi 1.0.16、HarfBuzz 13.0.1、libass 0.17.4、libplacebo 7.360.0 和构建期子模块均使用固定版本或提交。
+- 在线源码准备后，完整 `--offline` 干净重建通过。
+- `ffmpeg` 与 `libmpv.2.dylib` 均为 arm64-only，最低 macOS 版本为 13.0。
+- libmpv install name 为 `@rpath/libmpv.2.dylib`，两个产物均无额外 `LC_RPATH`。
+- 动态依赖仅包含 macOS 系统 Framework 与 `/usr/lib`。
+- 产物未引用 `/opt/homebrew`、`/usr/local` 或 `/opt/local`。
+- manifest 已生成，包含 17 个许可证文件。
+- `libmpv.2.dylib` 已通过 `ctypes` 动态加载及创建/初始化/销毁烟测，mpv client API 为 2.5。
+- `ffmpeg` 已通过单帧合成视频处理烟测。
+- `python3.14 tools/media_runtime/verify.py`、`venv/bin/python -m compileall src` 和 `git diff --check` 均通过。
+- Phase 2A 尚未把产物集成到 `Pavo.app`，也未进行应用播放回归。
+
+### Phase 2B Implementation Plan
+
+1. 在 `Pavo.spec` 构建开始前校验 Phase 2A 产物完整性，将 libmpv 与 FFmpeg 作为二进制放入 `Contents/Frameworks`，将 manifest 和许可证作为数据放入 `Contents/Resources/media-runtime`。
+2. 在 `src/bootstrap.py` 集中实现运行时路径解析；打包模式严格选择 bundle 内 libmpv，源码模式保留系统查找和显式路径覆盖。
+3. 在导入 `python-mpv` 前临时覆盖其 `ctypes.util.find_library("mpv")` 结果，并在导入后恢复，避免全局永久修改。
+4. 在 `src/engine.py` 使用 bootstrap 提供的 FFmpeg 路径；打包模式不回退到 Homebrew，源码模式保持现有开发体验。
+5. 新增 bundle 验证脚本，校验布局、manifest 哈希、架构、最低系统版本和所有 Mach-O 动态依赖。
+6. 更新运行时构建文档，构建应用并执行自动检查与基础运行回归。
+
+### Phase 2B Results
+
+- `Pavo.spec` 已在打包前校验 Phase 2A manifest、媒体产物 SHA-256 和许可证完整性。
+- `libmpv.2.dylib` 与 `ffmpeg` 已进入 `Pavo.app/Contents/Frameworks`。
+- manifest 与 17 个许可证文件已进入 `Pavo.app/Contents/Resources/media-runtime`。
+- 打包应用启动日志确认只加载 bundle 内的 `libmpv.2.dylib`，mpv 和 OpenGL render context 初始化成功。
+- 使用 bundle 内 FFmpeg 生成临时测试视频，并通过 Open File 成功打开和播放。
+- 源码开发模式仍能解析并加载系统 libmpv 与 FFmpeg，也支持 `PAVO_LIBMPV_PATH` 和 `PAVO_FFMPEG_PATH` 显式覆盖。
+- 扫描应用包内 105 个 Mach-O 文件，未发现 `/opt/homebrew`、`/usr/local`、`/opt/local` 或其他非系统绝对动态依赖。
+- bundle 内 libmpv 保持 `@rpath/libmpv.2.dylib` install name，client API 2.5，动态加载及初始化通过。
+- bundle 内 FFmpeg 8.0.3 执行和单帧处理烟测通过。
+- 发现发布阻塞：PySide6 6.10.2 wheel 标记为 macOS 13，但 11 个 PySide6/shiboken Mach-O 文件的实际最低系统版本为 macOS 15.0。
+- Phase 2B 媒体运行时集成已完成；在 PySide6 deployment target 问题解决并于真实 macOS 13 设备验证前，PAVO-006 不得标记为 Completed。
+
+### Phase 2C Implementation Plan
+
+1. 记录当前 Python 3.14、PySide6 6.10.2、shiboken6 6.10.2 基线及官方 PyPI wheel 元数据，并以 `vtool` 的最终 bundle 扫描结果为准。
+2. 在隔离目录测试 Python 3.13 + PySide6 6.9.3 和 Python 3.12 + PySide6 6.9.3；每个组合均从干净虚拟环境安装、构建并扫描完整应用包。
+3. 如果 PySide6 6.9.3 仍包含高于 macOS 13.0 的 Mach-O，再按最小回退原则测试较早的官方 PySide6 wheel。
+4. 对通过 deployment target 检查的候选执行启动、mpv/OpenGL、Open File、播放和缩略图烟测。
+5. 选择兼容性与维护周期最稳妥的组合，固定依赖版本，更新构建说明与任务记录。
+6. 使用最终固定环境重新构建并执行完整 bundle 验证、`compileall` 和 `git diff --check`。
+
+### Phase 2C Initial Findings
+
+- 当前构建环境为 Python 3.14.3、PySide6 6.10.2、PySide6-Essentials 6.10.2、PySide6-Addons 6.10.2、shiboken6 6.10.2 和 PyInstaller 6.19.0。
+- 上述 Qt for Python 包来自官方 Python package index，未包含本地路径或 VCS 安装来源。
+- PySide6 6.10.2 wheel 标签为 `macosx_13_0_universal2`，但最终应用包中 11 个 PySide6/shiboken Mach-O 文件经 `vtool` 实测为 `minos 15.0`。
+- Qt frameworks 本身为 `minos 13.0`；阻塞来自 PySide6/shiboken Python bindings，而不是 Phase 2A 的 libmpv 或 FFmpeg。
+- 本机 PATH 当前没有 Python 3.12 或 3.13；候选解释器将在 `/private/tmp` 隔离安装，仅用于本阶段验证。
+
+### Phase 2C Results
+
+- 基线 Python 3.14.3 + PySide6 6.10.2 的最终 bundle 包含 11 个 `minos 15.0` 的 PySide6/shiboken Mach-O，未通过 macOS 13.0 上限检查。
+- Python 3.12.12 与 3.13.12 候选使用 uv 管理的 `python-build-standalone` arm64 解释器；两个解释器本体经 `vtool` 实测均为 `minos 11.0`。
+- Python 3.13.12 + PySide6 6.9.3 从干净虚拟环境构建成功；wheel 安装目录中的 392 个 PySide6/shiboken Mach-O 均为 `minos 12.0`。
+- Python 3.12.12 + PySide6 6.9.3 从干净虚拟环境构建成功；使用相同的官方 `cp39-abi3-macosx_12_0_universal2` Qt for Python wheels。
+- PySide6、PySide6-Addons、PySide6-Essentials、shiboken6、PyInstaller 和 python-mpv 候选包均从 PyPI 索引安装，dist-info 中不存在本地路径或 VCS `direct_url.json`。
+- 两个 6.9.3 候选的最终 `Pavo.app` 均扫描 54 个 Mach-O：2 个为 `minos 11.0`、50 个为 `minos 12.0`、2 个为 `minos 13.0`，未发现更高 deployment target，也未发现 Homebrew、MacPorts 或 `/usr/local` 动态依赖。
+- 两个候选均通过 bundle 内 libmpv 初始化、bundle 内 FFmpeg 执行、应用启动、OpenGL 初始化、原生 Open File、视频播放和缩略图抽帧烟测。
+- 最终选择 Python 3.13.12 + PySide6 6.9.3；其兼容结果与 Python 3.12 相同，同时具有更长的 Python 上游维护周期。
+- `requirements.txt` 显式固定 PySide6、PySide6-Addons、PySide6-Essentials 和 shiboken6 6.9.3；`requirements-build.txt` 固定已验证的 PyInstaller 构建依赖。
+- `Pavo.spec` 拒绝非 Python 3.13.12 的发布构建，避免在未经验证的解释器上生成候选包。
+- 从新的 Python 3.13.12 虚拟环境严格按最终 `requirements-build.txt` 离线安装成功，`pip check` 报告无破损依赖。
+- 最终 requirements 驱动的 `Pavo.app` 构建成功，bundle 验证扫描 54 个 Mach-O，deployment target、动态依赖、libmpv 初始化和 FFmpeg 烟测全部通过。
+- 最终应用启动成功，日志确认使用 bundle 内 libmpv，mpv 与 OpenGL render context 初始化成功。
+- `/private/tmp/pavo-phase2c/final/venv/bin/python -m compileall src tools/media_runtime` 通过。
+- `git diff --check` 通过。
+- 本阶段没有修改 UI、播放逻辑或媒体运行时实现。
+- 仍需在真实 macOS 13 Apple Silicon 主机执行最终启动、OpenGL、播放和缩略图验证。
+
 ## Notes
 
 后续阶段仍需解决：
 
-- arm64 libmpv 及其传递依赖。
-- arm64 FFmpeg。
-- bundle 内动态库路径和加载策略。
+- 后续升级 Python、PySide6 或 shiboken6 时，必须重新执行最终 bundle 的 `vtool` 全量扫描。
+- 在真实 macOS 13 Apple Silicon 设备执行启动与播放验证。
 - Qt、python-mpv、mpv、FFmpeg 第三方许可证与来源记录。
+- LGPL 静态链接发布所需的源码提供、可重新链接材料和用户通知。
 - Developer ID 签名、Hardened Runtime、Apple 公证和 Gatekeeper 验证。
 
 第一阶段产物只用于打包基线验证，不是可公开分发版本。
 
 ## Commit
 
-`Pending`
+- Phase 1: `7f8c4ff build: establish reproducible macOS app baseline`
+- Phase 2A: `Pending`

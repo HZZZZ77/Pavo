@@ -1,0 +1,19 @@
+diff --git a/meson.build b/meson.build
+index 913544d..75e06e9 100644
+--- a/meson.build
++++ b/meson.build
+@@ -406,4 +406,6 @@ add_project_link_arguments(link_flags, language: ['c', 'cpp', 'objc'])
+ if darwin
+     path_source = files('osdep/path-darwin.c')
+     timer_source = files('osdep/timer-darwin.c')
++    # CoreAudio and AVFoundation also use these helpers without the Cocoa UI.
++    sources += files('osdep/utils-mac.c')
+ endif
+@@ -414,7 +416,6 @@ if features['cocoa']
+     dependencies += cocoa
+     path_source += files('osdep/path-mac.m')
+     sources += files('osdep/language-mac.c',
+-                     'osdep/utils-mac.c',
+                      'osdep/mac/app_bridge.m',
+                      'player/clipboard/clipboard-mac.m')
+     main_fn_source = files('osdep/main-fn-mac.c')

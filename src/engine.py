@@ -1,8 +1,6 @@
 import os
-import sys
 import subprocess
 import threading
-import shutil
 import logging
 
 import bootstrap
@@ -10,7 +8,15 @@ bootstrap.setup_pavo_env()
 
 logger = logging.getLogger("pavo.engine")
 
-import mpv
+MPV_IMPORT_ERROR = None
+try:
+    with bootstrap.use_resolved_libmpv():
+        import mpv
+except OSError as exc:
+    logger.exception("Failed to load libmpv")
+    mpv = None
+    MPV_IMPORT_ERROR = str(exc)
+
 from PySide6.QtCore import QObject, Signal
 
 class PavoEngine(QObject):
@@ -29,6 +35,8 @@ class PavoEngine(QObject):
         self.thumbnail_generation_id = 0
         self.current_media_path = None
         try:
+            if mpv is None:
+                raise RuntimeError(MPV_IMPORT_ERROR or "libmpv is unavailable")
             self.player = mpv.MPV(
                 hwdec="auto",
                 vo="libmpv",
@@ -114,26 +122,11 @@ class PavoEngine(QObject):
 
         def _extract():
             try:
-                ffmpeg_cmd = None
-                
-                # 👑 核心魔法：PyInstaller 打包后的专属路径寻址 (sys._MEIPASS)
-                if hasattr(sys, '_MEIPASS'):
-                    bundled_ffmpeg = os.path.join(sys._MEIPASS, 'ffmpeg')
-                    if os.path.exists(bundled_ffmpeg):
-                        ffmpeg_cmd = bundled_ffmpeg
-                
-                # 如果没打包（本地写代码测试时），用系统里的 ffmpeg
+                ffmpeg_cmd = bootstrap.resolve_ffmpeg_path()
                 if not ffmpeg_cmd:
-                    ffmpeg_cmd = shutil.which('ffmpeg')
-                    if not ffmpeg_cmd:
-                        if os.path.exists('/opt/homebrew/bin/ffmpeg'):
-                            ffmpeg_cmd = '/opt/homebrew/bin/ffmpeg'
-                        elif os.path.exists('/usr/local/bin/ffmpeg'):
-                            ffmpeg_cmd = '/usr/local/bin/ffmpeg'
-                        else:
-                            logger.warning("FFmpeg not found; thumbnail preview is unavailable")
-                            self.error_occurred.emit("FFmpeg not found. Thumbnail preview is unavailable.")
-                            return
+                    logger.warning("FFmpeg not found; thumbnail preview is unavailable")
+                    self.error_occurred.emit("FFmpeg not found. Thumbnail preview is unavailable.")
+                    return
                             
                 cmd = [
                     ffmpeg_cmd, '-y', '-ss', str(time_key), '-i', media_path,

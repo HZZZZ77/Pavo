@@ -58,16 +58,23 @@ Pavo 第一阶段发布基线面向 Apple Silicon：
 - Bundle Identifier：`io.github.hzzzz77.pavo`
 - 目标架构：`arm64`
 - 最低系统版本：macOS 13.0
-- 构建 Python：3.14
+- 构建 Python：3.13.12
+- Qt for Python：PySide6 / shiboken6 6.9.3
 
-从干净 clone 创建独立构建环境：
+从干净 clone 先构建固定版本的 arm64 媒体运行时：
 
 ```bash
-python3.14 -m venv .venv-build
+python3.14 tools/media_runtime/build.py
+```
+
+然后创建独立应用构建环境：
+
+```bash
+python3.13 -m venv .venv-build
 .venv-build/bin/python -m pip install -r requirements-build.txt
 ```
 
-唯一支持的构建命令：
+应用打包命令：
 
 ```bash
 .venv-build/bin/python -m PyInstaller --clean --noconfirm Pavo.spec
@@ -79,7 +86,25 @@ python3.14 -m venv .venv-build
 dist/Pavo.app
 ```
 
-当前基线只验证 `.app` 结构、应用元数据和 arm64 打包流程，尚未集成 `libmpv` 与 `ffmpeg`，也未进行 Developer ID 签名或 Apple 公证。因此该产物暂不用于公开分发，且不能视为无 Homebrew 依赖的完整播放器。
+验证 bundle 内媒体运行时和动态依赖：
+
+```bash
+python3.14 tools/media_runtime/verify_bundle.py
+```
+
+`Pavo.app` 会使用 `Contents/Frameworks` 中随包提供的 `libmpv.2.dylib` 和
+`ffmpeg`，不要求用户安装 Homebrew、mpv 或 FFmpeg。当前产物仍未进行
+Developer ID 签名或 Apple 公证，因此暂不用于公开分发。
+
+发布构建固定使用 Python 3.13.12 和 PySide6 6.9.3。最终应用包必须执行：
+
+```bash
+python3.14 tools/media_runtime/verify_bundle.py dist/Pavo.app
+```
+
+验证以 `vtool` 读取的实际 Mach-O deployment target 为准，不以 wheel 文件名
+或标签代替。当前固定组合的完整 bundle 扫描已通过 macOS 13.0 上限检查；公开
+发布前仍必须在真实 macOS 13 Apple Silicon 设备完成启动、OpenGL 和播放验证。
 
 ---
 

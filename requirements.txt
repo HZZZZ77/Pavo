@@ -1,2 +1,2 @@
-PySide6
-python-mpv
+PySide6==6.10.2
+python-mpv==1.0.8

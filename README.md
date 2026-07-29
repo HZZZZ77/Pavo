@@ -43,9 +43,43 @@
 1.  **准备环境**：安装 Python 3.11+ 及 `mpv` 库 (`brew install mpv`)。
 2.  **部署运行**：
     ```bash
-    pip install -r requirements.txt
-    python src/main.py
+    python3 -m pip install -r requirements.txt
+    python3 src/main.py
     ```
+
+---
+
+### 📦 macOS arm64 打包基线
+
+Pavo 第一阶段发布基线面向 Apple Silicon：
+
+- 应用名称：`Pavo`
+- 应用版本：`1.2.0`
+- Bundle Identifier：`io.github.hzzzz77.pavo`
+- 目标架构：`arm64`
+- 最低系统版本：macOS 13.0
+- 构建 Python：3.14
+
+从干净 clone 创建独立构建环境：
+
+```bash
+python3.14 -m venv .venv-build
+.venv-build/bin/python -m pip install -r requirements-build.txt
+```
+
+唯一支持的构建命令：
+
+```bash
+.venv-build/bin/python -m PyInstaller --clean --noconfirm Pavo.spec
+```
+
+构建产物位于：
+
+```text
+dist/Pavo.app
+```
+
+当前基线只验证 `.app` 结构、应用元数据和 arm64 打包流程，尚未集成 `libmpv` 与 `ffmpeg`，也未进行 Developer ID 签名或 Apple 公证。因此该产物暂不用于公开分发，且不能视为无 Homebrew 依赖的完整播放器。
 
 ---
 
@@ -56,4 +90,4 @@
 ---
 
 ### 📄 License
-本项目基于 [MIT] 协议开源。
+本项目基于 [MIT](LICENSE) 协议开源。

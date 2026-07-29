@@ -2,90 +2,115 @@
 
 ## Task ID
 
-`PAVO-005`
+`PAVO-006`
 
 ## Title
 
-Unify glass UI styling
+macOS Release Readiness Audit
 
 ## Status
 
-`Completed`
+`Phase 1 Complete`
 
 ## Priority
 
-`P1`
+`P0`
 
 ## Created
 
-`2026-07-27`
+`2026-07-29`
 
 ## Objective
 
-统一 Pavo 主要浮层与交互控件的玻璃视觉语言，并确保无媒体状态下 HUD 进度显示与播放器真实状态一致。
+建立可重复的 macOS Apple Silicon 打包基线，使维护者能够从干净 clone 使用固定工具链生成未签名的 `Pavo.app`。
 
 ## Background
 
-HUD 精修后，无媒体状态的进度条残留、Qt 默认进度条绘制、浮层边框差异和菜单样式不一致更加明显。
+此前 `Pavo.spec` 被 `.gitignore` 排除，依赖版本未锁定，应用缺少明确的 bundle identifier、版本和目标架构。现有本地产物也不是可验证的发布候选。
 
-本任务在不改变播放器布局和功能的前提下，以底部 HUD 为视觉基准，逐步统一顶部 OSD、菜单、Empty State 和 Playlist，并修复空媒体状态进度不一致问题。
+第一阶段只建立 arm64 `.app` 构建基线，不处理媒体二进制整合、签名或公证。
 
 ## Requirements
 
-- 无媒体启动和 Clear Playlist 后，进度、时间和 seek 状态必须归零。
-- 使用自绘进度条，保留 hover preview、seek 和 disabled 行为。
-- 优化 HUD 按钮 hover、pressed、tooltip 和自动隐藏交互。
-- 使用抗锯齿自绘统一 HUD、顶部 OSD、Empty State 按钮和 Playlist 的玻璃背景与边框。
-- 统一设置、字幕和 Playlist 右键菜单的深色玻璃样式。
-- 保持播放、播放列表、缩略图、PiP、全屏和文件打开功能不变。
+- 将 `Pavo.spec` 纳入 Git 管理。
+- 固定 PySide6、python-mpv 和 PyInstaller 版本。
+- 配置应用名称、版本、bundle identifier、图标和 arm64 target。
+- 记录 macOS 13.0 最低版本基线。
+- 提供唯一构建命令和明确产物位置。
+- 从全新虚拟环境验证依赖安装和 `.app` 构建。
+- 不打包仓库中的 x86_64 FFmpeg。
+- 不复制或依赖 Homebrew libmpv 作为打包输入。
 
 ## Scope
 
-- `src/components/hud_panel.py`
-- `src/main.py`
+- `.gitignore`
+- `Pavo.spec`
+- `requirements.txt`
+- `requirements-build.txt`
+- `README.md`
+- `docs/tasks/ACTIVE.md`
 
 ## Non Goals
 
-- 不重做 HUD 或播放器布局。
-- 不修改播放引擎和播放流程。
-- 不修改 `src/engine.py`。
-- 不修改 `src/video_widget.py`。
-- 不新增控制按钮、媒体库或其他产品功能。
+- 不修改 UI 或播放逻辑。
+- 不修改 `src/` 下任何文件。
+- 不集成 libmpv 或 FFmpeg。
+- 不配置 Developer ID、entitlements、Hardened Runtime 或公证。
+- 不创建 DMG、GitHub Release 或公开发布产物。
+- 不支持 Intel 或 universal2。
 
 ## Acceptance Criteria
 
-- 无媒体状态下进度条不显示蓝色进度或 handle，且不可 seek：通过。
-- Clear Playlist 后时间和进度正确归零：通过。
-- 播放媒体后进度条、hover preview 和 seek 正常：通过。
-- HUD 显示隐藏、按钮反馈和菜单操作正常：通过。
-- HUD、顶部 OSD、菜单、Empty State 按钮和 Playlist 玻璃视觉一致：通过。
-- Playlist 拖放、右键菜单、滚动、双击播放和淡入淡出保持正常：通过。
-- 播放、暂停、PiP、全屏和文件打开无回归：通过。
+- `Pavo.spec` 不再被 Git 忽略。
+- 全新虚拟环境可安装锁定依赖。
+- 唯一构建命令能够生成 `dist/Pavo.app`。
+- 主可执行文件为 `arm64`。
+- Info.plist 包含正确名称、版本、bundle identifier 和 macOS 13.0 最低版本。
+- `pavo.icns` 正确进入应用包。
+- 应用包不包含仓库中的 x86_64 `ffmpeg`。
+- 应用包不包含或复制 Homebrew `libmpv`。
+- `compileall` 和 `git diff --check` 通过。
 
 ## Testing
 
-运行：
-
 ```bash
-venv/bin/python -m compileall src
+python3.14 -m venv /private/tmp/pavo-release-baseline-venv
+/private/tmp/pavo-release-baseline-venv/bin/python -m pip install -r requirements-build.txt
+/private/tmp/pavo-release-baseline-venv/bin/python -m PyInstaller --clean --noconfirm Pavo.spec
+/private/tmp/pavo-release-baseline-venv/bin/python -m compileall src
 git diff --check
 ```
 
-测试结果：
+构建后检查：
 
-- `python3 -m compileall src`：通过。
-- `venv/bin/python -m compileall src`：通过。
-- `git diff --check`：通过。
-- 用户实机视觉测试：通过。
-- 用户实机交互与播放回归测试：通过。
+- `plutil -p dist/Pavo.app/Contents/Info.plist`
+- `file dist/Pavo.app/Contents/MacOS/Pavo`
+- 检查应用包中不存在 `ffmpeg` 和 `libmpv`。
+
+### Phase 1 Results
+
+- Python 3.14.2 全新虚拟环境创建成功。
+- PySide6 6.10.2、python-mpv 1.0.8 和 PyInstaller 6.19.0 安装成功。
+- `dist/Pavo.app` 构建成功。
+- 主可执行文件确认为 `arm64`。
+- Info.plist 名称、版本、bundle identifier 和 macOS 13.0 最低版本检查通过。
+- `pavo.icns` 已包含在应用包中。
+- 应用包未包含 `ffmpeg` 或 `libmpv`。
+- `python -m compileall src` 通过。
+- `git diff --check` 通过。
+- 本阶段未进行应用运行验证；媒体运行仍依赖后续 arm64 libmpv 整合。
 
 ## Notes
 
-- `HoverSlider` 使用 `QPainter` 和 `QStyle.sliderPositionFromValue()` 自绘轨道、进度和 handle。
-- HUD、顶部 OSD、Empty State 按钮和 Playlist 容器使用抗锯齿圆角玻璃绘制。
-- `QMenu` 保留原生 popup 行为，仅统一深色玻璃样式。
-- Playlist 的 `QListWidget` 保持原有数据与交互职责，外层增加独立玻璃容器承载视觉和透明度动画。
-- 未修改播放逻辑、播放引擎或视频渲染模块。
+后续阶段仍需解决：
+
+- arm64 libmpv 及其传递依赖。
+- arm64 FFmpeg。
+- bundle 内动态库路径和加载策略。
+- Qt、python-mpv、mpv、FFmpeg 第三方许可证与来源记录。
+- Developer ID 签名、Hardened Runtime、Apple 公证和 Gatekeeper 验证。
+
+第一阶段产物只用于打包基线验证，不是可公开分发版本。
 
 ## Commit
 

@@ -10,14 +10,127 @@ logger = logging.getLogger("pavo.main")
 from PySide6.QtWidgets import (QApplication, QMainWindow, QGridLayout, QWidget, 
                              QGraphicsOpacityEffect, QMenu, QLabel, QVBoxLayout,
                              QGraphicsDropShadowEffect, QListWidget, QListWidgetItem,
-                             QAbstractItemView, QFileDialog)
-from PySide6.QtGui import QSurfaceFormat, QAction, QKeyEvent, QPixmap, QPainter, QPainterPath, QColor, QKeySequence
+                             QAbstractItemView, QFileDialog, QPushButton)
+from PySide6.QtGui import QSurfaceFormat, QAction, QKeyEvent, QPixmap, QPainter, QLinearGradient, QPen, QColor, QKeySequence
 from PySide6.QtCore import Qt, QTimer, QEvent, QPropertyAnimation, QEasingCurve, QPoint, QUrl
 
 from engine import PavoEngine
 from video_widget import PavoVideoWidget
 from components.empty_state import EmptyState
 from components.hud_panel import HUDPanel
+
+MENU_STYLE = """
+    QMenu {
+        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                    stop:0 rgba(72, 72, 78, 238),
+                                    stop:0.5 rgba(46, 46, 52, 242),
+                                    stop:1 rgba(32, 32, 38, 246));
+        color: rgba(255, 255, 255, 230);
+        border: 1px solid rgba(255, 255, 255, 50);
+        border-radius: 12px;
+        padding: 6px;
+    }
+    QMenu::item {
+        padding: 6px 30px 6px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        margin: 2px 4px;
+    }
+    QMenu::item:selected {
+        background-color: rgba(10, 132, 255, 105);
+        color: white;
+    }
+    QMenu::item:disabled {
+        color: rgba(255, 255, 255, 100);
+    }
+    QMenu::separator {
+        height: 1px;
+        background: rgba(255, 255, 255, 20);
+        margin: 4px 10px;
+    }
+    QMenu::indicator {
+        width: 16px;
+        height: 16px;
+    }
+"""
+
+class GlassOSDLabel(QLabel):
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        radius = min(20.0, rect.height() / 2.0)
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        gradient.setColorAt(0.0, QColor(255, 255, 255, 30))
+        gradient.setColorAt(0.5, QColor(200, 200, 200, 15))
+        gradient.setColorAt(1.0, QColor(150, 150, 150, 25))
+
+        painter.setPen(QPen(QColor(255, 255, 255, 90), 1))
+        painter.setBrush(gradient)
+        painter.drawRoundedRect(rect, radius, radius)
+        painter.end()
+
+        super().paintEvent(event)
+
+class GlassButton(QPushButton):
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        if self.isDown():
+            gradient_colors = (
+                QColor(255, 255, 255, 22),
+                QColor(200, 200, 200, 10),
+                QColor(150, 150, 150, 18),
+            )
+            border_color = QColor(255, 255, 255, 75)
+        elif self.underMouse():
+            gradient_colors = (
+                QColor(255, 255, 255, 40),
+                QColor(200, 200, 200, 24),
+                QColor(150, 150, 150, 34),
+            )
+            border_color = QColor(255, 255, 255, 105)
+        else:
+            gradient_colors = (
+                QColor(255, 255, 255, 30),
+                QColor(200, 200, 200, 15),
+                QColor(150, 150, 150, 25),
+            )
+            border_color = QColor(255, 255, 255, 90)
+
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        radius = min(9.0, rect.height() / 2.0)
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        gradient.setColorAt(0.0, gradient_colors[0])
+        gradient.setColorAt(0.5, gradient_colors[1])
+        gradient.setColorAt(1.0, gradient_colors[2])
+
+        painter.setPen(QPen(border_color, 1))
+        painter.setBrush(gradient)
+        painter.drawRoundedRect(rect, radius, radius)
+        painter.end()
+
+        super().paintEvent(event)
+
+class GlassPanel(QWidget):
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        gradient.setColorAt(0.0, QColor(255, 255, 255, 30))
+        gradient.setColorAt(0.5, QColor(200, 200, 200, 15))
+        gradient.setColorAt(1.0, QColor(150, 150, 150, 25))
+
+        painter.setPen(QPen(QColor(255, 255, 255, 90), 1))
+        painter.setBrush(gradient)
+        painter.drawRoundedRect(rect, 20.0, 20.0)
+        painter.end()
 
 class PavoPlayer(QMainWindow):
     def __init__(self):
@@ -48,7 +161,8 @@ class PavoPlayer(QMainWindow):
         self.engine.play_state_changed.connect(self._sync_play_button)
         
         self.hud_timer = QTimer(self)
-        self.hud_timer.setInterval(2000)
+        self.hud_timer.setSingleShot(True)
+        self.hud_timer.setInterval(2500)
         self.hud_timer.timeout.connect(self.hide_hud)
         
         self._is_pip = False
@@ -85,6 +199,7 @@ class PavoPlayer(QMainWindow):
         self.empty_state.open_requested.connect(self.open_files)
         self.empty_state.files_dropped.connect(self.handle_dropped_files)
         self.main_layout.addWidget(self.empty_state, 0, 0)
+        self._install_empty_state_open_button()
 
         self.hud = HUDPanel(self.central_widget)
 
@@ -99,9 +214,12 @@ class PavoPlayer(QMainWindow):
         
         self.thumb_popup.setStyleSheet("""
             QWidget#thumbPopup { 
-                background-color: rgba(30, 30, 32, 200); 
-                border: 1px solid rgba(255, 255, 255, 30); 
-                border-radius: 12px; 
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 rgba(255, 255, 255, 45),
+                                            stop:0.5 rgba(90, 90, 96, 120),
+                                            stop:1 rgba(45, 45, 50, 165));
+                border: 1px solid rgba(255, 255, 255, 90);
+                border-radius: 20px;
             }
         """)
         popup_layout = QVBoxLayout(self.thumb_popup)
@@ -127,18 +245,33 @@ class PavoPlayer(QMainWindow):
         self.thumb_timer.timeout.connect(self._request_thumbnail)
         self._current_hover_time = 0
 
-        self.top_osd = QLabel(self.central_widget)
+        self.top_osd = GlassOSDLabel(self.central_widget)
+        self.top_osd.setObjectName("topOSD")
         self.top_osd.setAlignment(Qt.AlignCenter)
         self.top_osd.setText("")
         self.top_osd.setStyleSheet("""
-            QLabel { background-color: rgba(40, 40, 40, 180); color: rgba(255, 255, 255, 230); border: 1px solid rgba(255, 255, 255, 30); border-radius: 12px; padding: 8px 20px; font-size: 14px; font-weight: 500; }
+            QLabel#topOSD {
+                background: transparent;
+                color: rgba(255, 255, 255, 230);
+                border: 1px solid transparent;
+                border-radius: 20px;
+                padding: 8px 20px;
+                font-size: 14px;
+                font-weight: 500;
+            }
         """)
         self.top_osd.adjustSize()
         self.top_osd.hide()
         self.top_osd.raise_()
 
-        self.playlist_ui = QListWidget(self.central_widget)
-        self.playlist_ui.setFixedWidth(260)
+        self.playlist_panel = GlassPanel(self.central_widget)
+        self.playlist_panel.setFixedWidth(260)
+        playlist_layout = QVBoxLayout(self.playlist_panel)
+        playlist_layout.setContentsMargins(6, 6, 6, 6)
+        playlist_layout.setSpacing(0)
+
+        self.playlist_ui = QListWidget(self.playlist_panel)
+        playlist_layout.addWidget(self.playlist_ui)
         self.playlist_ui.setDragEnabled(True)
         self.playlist_ui.setAcceptDrops(True)
         self.playlist_ui.setDragDropMode(QAbstractItemView.InternalMove)
@@ -151,16 +284,15 @@ class PavoPlayer(QMainWindow):
 
         self.playlist_ui.setStyleSheet("""
             QListWidget {
-                background-color: rgba(25, 25, 25, 210);
+                background: transparent;
                 color: rgba(255, 255, 255, 220);
-                border: 1px solid rgba(255, 255, 255, 20);
-                border-radius: 12px;
-                padding: 6px;
+                border: none;
+                padding: 0;
                 outline: none;
             }
             QListWidget::item { padding: 12px 10px; border-radius: 8px; margin-bottom: 2px; }
-            QListWidget::item:selected { background-color: rgba(255, 255, 255, 30); color: white; font-weight: bold; }
-            QListWidget::item:hover:!selected { background-color: rgba(255, 255, 255, 10); }
+            QListWidget::item:selected { background-color: rgba(10, 132, 255, 65); color: white; font-weight: 500; }
+            QListWidget::item:hover:!selected { background-color: rgba(255, 255, 255, 14); }
             QScrollBar:vertical { border: none; background: transparent; width: 6px; margin: 4px 0 4px 0; }
             QScrollBar::handle:vertical { background-color: rgba(255, 255, 255, 50); min-height: 30px; border-radius: 3px; }
             QScrollBar::handle:vertical:hover { background-color: rgba(255, 255, 255, 120); }
@@ -168,11 +300,11 @@ class PavoPlayer(QMainWindow):
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { border: none; background: none; }
             QScrollBar:horizontal { height: 0px; background: transparent; }
         """)
-        self.playlist_ui.hide()
+        self.playlist_panel.hide()
         self.playlist_ui.itemDoubleClicked.connect(self._on_playlist_item_clicked)
 
         self.empty_state.raise_()
-        self.playlist_ui.raise_()
+        self.playlist_panel.raise_()
         self.hud.raise_()
         self.thumb_popup.raise_()
         self.top_osd.raise_()
@@ -186,12 +318,15 @@ class PavoPlayer(QMainWindow):
         self.fade_anim.finished.connect(self._on_fade_finished)
 
         self.osd_opacity_effect = QGraphicsOpacityEffect(self.top_osd)
+        self.osd_opacity_effect.setOpacity(1.0)
         self.top_osd.setGraphicsEffect(self.osd_opacity_effect)
         self.osd_fade_anim = QPropertyAnimation(self.osd_opacity_effect, b"opacity")
         self.osd_fade_anim.setDuration(300)
+        self.osd_fade_anim.setEasingCurve(QEasingCurve.InOutQuad)
 
-        self.pl_opacity = QGraphicsOpacityEffect(self.playlist_ui)
-        self.playlist_ui.setGraphicsEffect(self.pl_opacity)
+        self.pl_opacity = QGraphicsOpacityEffect(self.playlist_panel)
+        self.pl_opacity.setOpacity(1.0)
+        self.playlist_panel.setGraphicsEffect(self.pl_opacity)
         self.pl_fade_anim = QPropertyAnimation(self.pl_opacity, b"opacity")
         self.pl_fade_anim.setDuration(300)
         self.pl_fade_anim.setEasingCurve(QEasingCurve.InOutQuad)
@@ -234,39 +369,48 @@ class PavoPlayer(QMainWindow):
         self.timer.timeout.connect(self.sync_progress)
         self.timer.start(500)
 
+    def _install_empty_state_open_button(self):
+        original_button = self.empty_state.open_button
+        layout = self.empty_state.layout()
+        button_index = layout.indexOf(original_button)
+        button_alignment = layout.itemAt(button_index).alignment()
+
+        open_button = GlassButton(original_button.text(), self.empty_state)
+        open_button.setObjectName("emptyStateOpenButton")
+        open_button.setCursor(original_button.cursor())
+        open_button.setSizePolicy(original_button.sizePolicy())
+        open_button.setStyleSheet("""
+            QPushButton#emptyStateOpenButton {
+                min-width: 124px;
+                min-height: 36px;
+                color: rgba(255, 255, 255, 235);
+                background: transparent;
+                border: none;
+                padding: 0 18px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QPushButton#emptyStateOpenButton:hover,
+            QPushButton#emptyStateOpenButton:pressed {
+                background: transparent;
+                border: none;
+            }
+        """)
+        open_button.clicked.connect(lambda: self.empty_state.open_requested.emit())
+
+        layout.removeWidget(original_button)
+        layout.insertWidget(button_index, open_button, 0, button_alignment)
+        original_button.deleteLater()
+        self.empty_state.open_button = open_button
+
     def _create_styled_menu(self):
         menu = QMenu(self)
-        menu.setAttribute(Qt.WA_TranslucentBackground)
-        menu.setWindowFlags(menu.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: rgba(30, 30, 32, 220);
-                color: rgba(255, 255, 255, 230);
-                border: 1px solid rgba(255, 255, 255, 30);
-                border-radius: 12px;
-                padding: 6px;
-            }
-            QMenu::item {
-                padding: 8px 30px 8px 16px;
-                border-radius: 6px;
-                font-size: 13px;
-                margin: 2px 4px;
-            }
-            QMenu::item:selected {
-                background-color: rgba(255, 255, 255, 30);
-                color: white;
-            }
-            QMenu::item:disabled {
-                color: rgba(255, 255, 255, 100);
-            }
-            QMenu::separator {
-                height: 1px;
-                background: rgba(255, 255, 255, 20);
-                margin: 4px 10px;
-            }
-            QMenu::indicator { width: 16px; height: 16px; }
-        """)
+        self._apply_menu_style(menu)
         return menu
+
+    def _apply_menu_style(self, menu):
+        menu.setStyleSheet(MENU_STYLE)
 
     def show_playlist_context_menu(self, pos):
         item = self.playlist_ui.itemAt(pos)
@@ -293,10 +437,7 @@ class PavoPlayer(QMainWindow):
         self.playlist_ui.clear()
         self.playlist_ui.clearSelection()
         self.reset_thumbnail_preview()
-        self.hud.progress_slider.total_time = 0
-        self.hud.progress_slider.setValue(0)
-        self.hud.curr_time_label.setText("00:00")
-        self.hud.total_time_label.setText("00:00")
+        self.hud.reset_progress()
         self.video_canvas.update()
         self._sync_play_button(False)
         self.empty_state.show()
@@ -314,13 +455,13 @@ class PavoPlayer(QMainWindow):
         self.save_data()
 
     def toggle_playlist(self):
-        if self.playlist_ui.isVisible() and self.pl_opacity.opacity() > 0:
+        if self.playlist_panel.isVisible() and self.pl_opacity.opacity() > 0:
             self._playlist_was_visible = False
             self.pl_fade_anim.setEndValue(0.0); self.pl_fade_anim.start()
-            QTimer.singleShot(300, self.playlist_ui.hide) 
+            QTimer.singleShot(300, self.playlist_panel.hide)
         else:
             self._playlist_was_visible = True
-            self.playlist_ui.show()
+            self.playlist_panel.show()
             self.pl_fade_anim.setEndValue(1.0); self.pl_fade_anim.start()
             self.playlist_ui.setFocus()
             self.wake_hud()
@@ -437,7 +578,7 @@ class PavoPlayer(QMainWindow):
         self.refresh_playlist_ui()
         
         self._playlist_was_visible = True
-        self.playlist_ui.show()
+        self.playlist_panel.show()
         self.pl_fade_anim.setEndValue(1.0); self.pl_fade_anim.start()
         
         if self.current_idx == -1 or not self.engine.current_media_path:
@@ -462,7 +603,7 @@ class PavoPlayer(QMainWindow):
         self.load_local_video(self.playlist[idx])
         self._playlist_was_visible = False
         self.pl_fade_anim.setEndValue(0.0); self.pl_fade_anim.start()
-        QTimer.singleShot(300, self.playlist_ui.hide)
+        QTimer.singleShot(300, self.playlist_panel.hide)
 
     def reset_thumbnail_preview(self):
         self.thumb_timer.stop()
@@ -503,9 +644,13 @@ class PavoPlayer(QMainWindow):
         return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}" if s >= 3600 else f"{(s%3600)//60:02d}:{s%60:02d}"
 
     def sync_progress(self):
+        if not self.engine.current_media_path:
+            self.hud.reset_progress()
+            return
+
         current, total = self.engine.get_progress()
         self.hud.update_progress(current, total)
-        if total > 0 and self.engine.current_media_path:
+        if total > 0:
             self.history[self.engine.current_media_path] = current
 
     def _on_hover_moved(self, time_sec, local_x):
@@ -579,8 +724,8 @@ class PavoPlayer(QMainWindow):
             self._normal_geometry = self.geometry()
             self._is_pip = True
             
-            if self.playlist_ui.isVisible():
-                self.playlist_ui.hide()
+            if self.playlist_panel.isVisible():
+                self.playlist_panel.hide()
                 self._playlist_was_visible = True
             else:
                 self._playlist_was_visible = False
@@ -609,7 +754,7 @@ class PavoPlayer(QMainWindow):
             if hasattr(self.hud, 'set_pip_mode'):
                 self.hud.set_pip_mode(False)
             if getattr(self, '_playlist_was_visible', False):
-                self.playlist_ui.show()
+                self.playlist_panel.show()
             
             # 👑 修复：退出画中画时更新 OSD 提示，防止文本残留
             self.show_osd("📺 Standard View")
@@ -636,8 +781,7 @@ class PavoPlayer(QMainWindow):
         menu = self._create_styled_menu()
         
         speed_menu = menu.addMenu("⏩ Playback Speed")
-        speed_menu.setAttribute(Qt.WA_TranslucentBackground)
-        speed_menu.setStyleSheet(menu.styleSheet())
+        self._apply_menu_style(speed_menu)
         for s in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]:
             act = QAction(f"{s}x", self)
             act.setCheckable(True)
@@ -646,8 +790,7 @@ class PavoPlayer(QMainWindow):
             speed_menu.addAction(act)
             
         aspect_menu = menu.addMenu("📺 Aspect Ratio")
-        aspect_menu.setAttribute(Qt.WA_TranslucentBackground)
-        aspect_menu.setStyleSheet(menu.styleSheet())
+        self._apply_menu_style(aspect_menu)
         for ratio in ["Auto", "16:9", "16:10", "4:3", "21:9", "2.35:1", "1:1"]:
             act = QAction(ratio, self)
             act.setCheckable(True)
@@ -656,8 +799,7 @@ class PavoPlayer(QMainWindow):
             aspect_menu.addAction(act)
             
         audio_menu = menu.addMenu("🎵 Audio Track")
-        audio_menu.setAttribute(Qt.WA_TranslucentBackground)
-        audio_menu.setStyleSheet(menu.styleSheet())
+        self._apply_menu_style(audio_menu)
         tracks = self.engine.get_audio_tracks()
         if not tracks:
             act = QAction("🚫 No audio tracks available", self)
@@ -677,9 +819,9 @@ class PavoPlayer(QMainWindow):
     def resizeEvent(self, event):
         if hasattr(self, 'top_osd'):
             self.top_osd.move((self.width() - self.top_osd.width()) // 2, 30)
-        if hasattr(self, 'playlist_ui'):
-            self.playlist_ui.move(self.width() - self.playlist_ui.width() - 20, 20)
-            self.playlist_ui.setFixedHeight(max(100, self.height() - 140))
+        if hasattr(self, 'playlist_panel'):
+            self.playlist_panel.move(self.width() - self.playlist_panel.width() - 20, 20)
+            self.playlist_panel.setFixedHeight(max(100, self.height() - 140))
         if hasattr(self, 'hud'):
             hud_w = min(640, self.width() - 40)
             self.hud.setFixedWidth(hud_w)
@@ -713,22 +855,33 @@ class PavoPlayer(QMainWindow):
             self.fade_anim.setEndValue(1.0); self.fade_anim.start()
             self.osd_fade_anim.setEndValue(1.0); self.osd_fade_anim.start()
             if getattr(self, '_playlist_was_visible', False):
-                self.playlist_ui.show()
+                self.playlist_panel.show()
                 self.pl_fade_anim.setEndValue(1.0); self.pl_fade_anim.start()
         if getattr(self.hud, 'is_playing', True): self.hud_timer.start()
 
     def hide_hud(self):
         if not self.hud.isHidden() and getattr(self.hud, 'is_playing', True):
+            if self._hud_interaction_active():
+                self.hud_timer.start()
+                return
             self.fade_anim.setEndValue(0.0); self.fade_anim.start()
             self.osd_fade_anim.setEndValue(0.0); self.osd_fade_anim.start()
-            if self.playlist_ui.isVisible():
+            if self.playlist_panel.isVisible():
                 self.pl_fade_anim.setEndValue(0.0); self.pl_fade_anim.start()
+
+    def _hud_interaction_active(self):
+        return (
+            self.hud.underMouse()
+            or self.playlist_panel.underMouse()
+            or self.thumb_popup.underMouse()
+            or QApplication.activePopupWidget() is not None
+        )
 
     def _on_fade_finished(self):
         if self.fade_anim.endValue() == 0.0: 
             self.hud.hide(); self.top_osd.hide()
-            if self.playlist_ui.isVisible() and self.pl_opacity.opacity() == 0.0:
-                self.playlist_ui.hide()
+            if self.playlist_panel.isVisible() and self.pl_opacity.opacity() == 0.0:
+                self.playlist_panel.hide()
 
 if __name__ == "__main__":
     logger.info("Pavo application starting")

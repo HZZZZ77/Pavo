@@ -1,8 +1,4 @@
-# Active Task
-
-## Task ID
-
-`PAVO-005`
+# PAVO-005
 
 ## Title
 
@@ -10,15 +6,15 @@ Unify glass UI styling
 
 ## Status
 
-`Completed`
+Completed
 
 ## Priority
 
-`P1`
+P1
 
 ## Created
 
-`2026-07-27`
+2026-07-27
 
 ## Objective
 

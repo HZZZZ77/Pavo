@@ -3,34 +3,22 @@
 This document lists confirmed limitations relevant to the Pavo 1.2.0 release
 candidate. It is not a complete feature roadmap.
 
-## Playlist Navigation
-
-### No Manual Previous or Next Commands
-
-Pavo automatically continues to the next playlist item when playback ends, but
-there are currently no manual Previous or Next buttons or menu commands.
-
-**Workaround:** Open the playlist and select the desired item directly.
-
-### Removing the Current Item Can Break Auto-Next
-
-If the currently playing item is removed from the playlist, playback continues,
-but the playlist can lose its current position. Automatic continuation may not
-select the following item when playback ends.
-
-**Workaround:** Select another playlist item after removing the current one.
-
 ## Subtitles
-
-### No Subtitle Off Command
-
-Available subtitle tracks can be selected, but the subtitle menu does not
-currently provide an explicit Off command.
 
 ### No Subtitle Timing Adjustment
 
 Pavo does not currently expose subtitle delay controls. Media with incorrectly
 timed subtitles must be corrected outside Pavo.
+
+## Unsigned Beta
+
+Pavo 1.2.0 Beta is ad-hoc signed rather than signed with an Apple Developer ID,
+and it is not notarized. macOS will identify the developer as unverified on the
+first launch.
+
+Follow the [installation guide](../../INSTALL.md) to approve the app through
+Finder or System Settings. Only install archives downloaded from Pavo's official
+GitHub Releases page, and compare the SHA-256 checksum with the release notes.
 
 ## Platform Coverage
 

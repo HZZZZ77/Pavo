@@ -1,7 +1,8 @@
 # Pavo 1.2.0
 
-> Draft release copy. Do not publish until the final archive has been signed,
-> notarized, attached to the GitHub Release, and tested on a supported Mac.
+> Draft beta release copy. Do not publish until the final archive checksum,
+> installation instructions, known issues, and remaining release blockers have
+> been reviewed.
 
 Pavo is a quiet, local-first media player designed for macOS. Version 1.2.0 is
 the first public release candidate, focused on reliable everyday playback and a
@@ -13,6 +14,8 @@ clean desktop experience.
 - Open multiple files at once and manage them in a lightweight playlist.
 - Play, pause, seek, adjust volume, change playback speed, and select aspect ratio.
 - Select available audio and subtitle tracks.
+- Turn subtitles off directly from the subtitle menu.
+- Move to the previous or next playlist item from the Playback menu.
 - Preview video frames by hovering over the progress bar.
 - Use fullscreen and Picture in Picture.
 - Reopen recent files without building a media library or signing in.
@@ -40,18 +43,17 @@ Intel Macs are not supported by this release.
 1. Download the macOS arm64 archive from the GitHub Release assets.
 2. Extract `Pavo.app`.
 3. Move Pavo to the Applications folder.
-4. Open Pavo and choose a local media file.
+4. Follow the [installation guide](../../INSTALL.md) for the first launch of the
+   unsigned beta.
+5. Open Pavo and choose a local media file.
 
-The final archive name and installation check must be confirmed before this
-draft is published.
+The beta is not signed or notarized because the project does not currently have
+an Apple Developer account. macOS will therefore require explicit user approval
+the first time Pavo is opened.
 
 ## Known Limitations
 
-- Manual Previous and Next playlist commands are not available.
-- Removing the currently playing playlist item can interrupt automatic
-  continuation at the end of that file.
-- Subtitles can be selected, but the current menu does not provide an explicit
-  Off command or subtitle timing adjustment.
+- Subtitle timing adjustment is not available.
 - Compatibility has not yet been validated on a physical macOS 13 host.
 - HDR10 and HLG files can be opened in current testing, but end-to-end HDR
   output and visual quality have not been certified.

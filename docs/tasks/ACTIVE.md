@@ -2,6 +2,71 @@
 
 ## Task ID
 
+`PAVO-009`
+
+## Title
+
+Prepare Beta Release Package
+
+## Status
+
+`Package Prepared - Publication Blockers Remaining`
+
+## Priority
+
+`P0`
+
+## Created
+
+`2026-07-30`
+
+## Objective
+
+在没有 Apple Developer 账号的前提下，为 Pavo 1.2.0 Beta 生成可验证的 arm64 发布包、安装指南、FAQ 和发布检查清单。
+
+## Scope
+
+- `docs/release/RELEASE_CHECKLIST_v1.2.0-beta.md`
+- `docs/release/RELEASE_NOTES_v1.2.0.md`
+- `docs/release/KNOWN_ISSUES.md`
+- `INSTALL.md`
+- `FAQ.md`
+- `docs/tasks/ACTIVE.md`
+- 本地生成且由 Git 忽略的 `dist/Pavo.app`
+- 本地生成且由 Git 忽略的 `dist/Pavo-1.2.0-beta-macos-arm64.zip`
+
+## Non Goals
+
+- 不修改播放器功能代码。
+- 不修改媒体 Runtime、README 或打包配置。
+- 不配置 Developer ID、Hardened Runtime 或 Apple 公证。
+- 不上传 GitHub Release，不 commit，不 push。
+
+## Results
+
+- 使用 Python 3.13.12 和 PyInstaller 6.19.0 从当前提交重新构建 `Pavo.app`。
+- `verify_bundle.py` 扫描 54 个 Mach-O，无 deployment target 违规或 Homebrew、MacPorts、`/usr/local` 依赖。
+- bundle 内 libmpv 初始化、FFmpeg 烟测、17 份许可证检查通过。
+- `codesign --verify --deep --strict` 通过；签名类型为 ad-hoc，无 Team Identifier。
+- 使用仅系统 PATH 的隔离环境启动成功，确认 bundle 内 libmpv、mpv 和 OpenGL 初始化。
+- 打包应用成功打开并显示 HEVC 4K 测试文件，并以退出码 0 关闭。
+- ZIP 解压副本通过完整 bundle 验证。
+- 生成 61 MB 的 `Pavo-1.2.0-beta-macos-arm64.zip`。
+- SHA-256：`5adc58a30ab6e000f6b7024129be49f701aa4b8ede979ed6237260b6db15224a`。
+
+## Remaining Blockers
+
+- PAVO-008 仍需真实字幕和多文件播放手动回归。
+- 发布前需要复核第三方许可证、静态链接源码提供和 relinking 义务。
+- 仍未在物理 macOS 13 Apple Silicon 主机验收。
+- 无 Developer ID 和公证，因此只能作为明确标注的 unsigned beta 发布。
+
+---
+
+# Related Active Task
+
+## Task ID
+
 `PAVO-008`
 
 ## Title

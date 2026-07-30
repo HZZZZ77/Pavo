@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-07-30",
+  "storage": {
+    "location": "/private/tmp/pavo-phase3a/assets",
+    "tracked_by_git": false,
+    "note": "Media files are temporary audit inputs and must not be committed."
+  },
+  "public_sources": [
+    {
+      "name": "vp9-webm-project.webm",
+      "source_page": "https://www.webmproject.org/",
+      "download_url": "https://storage.googleapis.com/downloads.webmproject.org/test_data/libvpx/vp90-2-00-quantizer-00.webm",
+      "distribution": "Not redistributed by Pavo; used as a public codec test vector.",
+      "size_bytes": 148198,
+      "sha256": "92f26f690d76b46bab8b0807e95b593b7cb159472cfecc35ddf545c889825c6d"
+    },
+    {
+      "name": "jellyfin-av1-1080p-10bit-3m.mp4",
+      "source_page": "https://nyc1.mirror.jellyfin.org/main/test-videos/",
+      "download_url": "https://nyc1.mirror.jellyfin.org/main/test-videos/SDR/AV1/Test%20Jellyfin%201080p%20AV1%2010bit%203M.mp4",
+      "license": "Creative Commons Attribution-ShareAlike, as stated by the source page",
+      "size_bytes": 11215840,
+      "sha256": "a11793902fdc36012221b05b12ebb5b959fb75b3316bd2723f08b02a7e86f165"
+    },
+    {
+      "name": "jellyfin-hevc-hdr10-1080p-3m.mp4",
+      "source_page": "https://nyc1.mirror.jellyfin.org/main/test-videos/",
+      "download_url": "https://nyc1.mirror.jellyfin.org/main/test-videos/HDR/HDR10/HEVC/Test%20Jellyfin%201080p%20HEVC%20HDR10%203M.mp4",
+      "license": "Creative Commons Attribution-ShareAlike, as stated by the source page",
+      "size_bytes": 11298717,
+      "sha256": "d43f639286308c5f90f79d7df93828e995a674e9bb6cf54653d146bc72d360e9"
+    },
+    {
+      "name": "wikimedia-110-sine-wave.mp3",
+      "source_page": "https://commons.wikimedia.org/wiki/File:110_Sine_wave.ogg",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/transcoded/b/bb/110_Sine_wave.ogg/110_Sine_wave.ogg.mp3",
+      "license": "Public domain / CC0 source; Wikimedia-generated MP3 transcode",
+      "size_bytes": 55327,
+      "sha256": "397e59043b63bb573f6631bc57e9cf7eb76f45c8b8ad982b6c7f4f40400664fa"
+    }
+  ],
+  "generated_files": [
+    {
+      "name": "audio-aac.m4a",
+      "media": "M4A / AAC",
+      "size_bytes": 291713,
+      "sha256": "c56a5ad2fe14f785d1071ad58d3e8a887a7de258ef7b6216d29670f15495958c"
+    },
+    {
+      "name": "audio-ac3.ac3",
+      "media": "raw AC-3",
+      "size_bytes": 576000,
+      "sha256": "d1a8a77834433f3ce61584a1625e74862a4bf168221c9f38813010063ca14e66"
+    },
+    {
+      "name": "audio-eac3.eac3",
+      "media": "raw E-AC-3",
+      "size_bytes": 576000,
+      "sha256": "82e393afc47b22c06f4f0dd14cf56889a0d021562671ed986224f25cd913a112"
+    },
+    {
+      "name": "audio-flac.flac",
+      "media": "FLAC",
+      "size_bytes": 169816,
+      "sha256": "230976e37185de88da8c400dd654505e4994e5742698595a70e468039ae7fbf8"
+    },
+    {
+      "name": "audio-opus.opus",
+      "media": "Ogg / Opus",
+      "size_bytes": 194607,
+      "sha256": "2aa5f4aa573eb83fe524a744bdd74ea7124ef17f31d284f0aa7aec3840509d3e"
+    },
+    {
+      "name": "external-en.srt",
+      "media": "external SubRip subtitles",
+      "size_bytes": 117,
+      "sha256": "085aa1bc37119cdb256759e8933960df3f2c83021a1f421f1857afc34c0170d9"
+    },
+    {
+      "name": "external-styled.ass",
+      "media": "external ASS subtitles",
+      "size_bytes": 674,
+      "sha256": "d4eeedcaee36a7b24e4da0b87d7718f8d91cf7a815d611dc68e7befe39168b95"
+    },
+    {
+      "name": "mkv-av1-flac.mkv",
+      "media": "MKV / AV1 Main 10 / FLAC / 1080p60 / 12 seconds",
+      "size_bytes": 4675429,
+      "sha256": "4f4b3f450c6d40541f3ff193e8619b90b043eed937f21d52239b1703b31ca091"
+    },
+    {
+      "name": "mkv-h264-multiaudio-subs.mkv",
+      "media": "MKV / H.264 / AAC + AC-3 + E-AC-3 / embedded SRT + ASS",
+      "size_bytes": 13398251,
+      "sha256": "bf5f38a6b1fbda6a31ca2de873f08ce99824602cd0b9d97dcd9e44712067215b"
+    },
+    {
+      "name": "mov-hevc-aac-1080p.mov",
+      "media": "MOV / HEVC / AAC / 1080p30 / 12 seconds",
+      "size_bytes": 15236609,
+      "sha256": "dba1af87a18459c18dae6521ee1866976ac6b0a3d20b7de442ba2f2359007f43"
+    },
+    {
+      "name": "mp4-h264-aac-1080p.mp4",
+      "media": "MP4 / H.264 / AAC / 1080p30 / 12 seconds",
+      "size_bytes": 12242774,
+      "sha256": "7607ddb8daf2a9d69e101de740940bdbffbe311e1803a10030a6b851ddd67c07"
+    },
+    {
+      "name": "mp4-h264-long-2h.mp4",
+      "media": "MP4 / H.264 / no audio / 720p1 / 2 hours",
+      "size_bytes": 134467450,
+      "sha256": "2c5fcf632e7a06b19f717123e0267c1f10a3aec2a3d159cb0b923765b14ccec7"
+    },
+    {
+      "name": "mp4-hevc-4k60-high-bitrate.mp4",
+      "media": "MP4 / HEVC / AAC / 4K60 / approximately 56 Mbps / 15 seconds",
+      "size_bytes": 105417901,
+      "sha256": "ba4ff98685d79788bc9f288c8d0ee9db1edee20f266b0688882200a182ca476d"
+    },
+    {
+      "name": "mp4-hevc-hlg-1080p.mp4",
+      "media": "MP4 / HEVC Main 10 / AAC / BT.2020 HLG / 1080p30 / 12 seconds",
+      "size_bytes": 18248557,
+      "sha256": "c8a30aa58b5a31af04f0078e3460beabade4c983bf3fc1bcbd148bf43dc5ab20"
+    },
+    {
+      "name": "tone.wav",
+      "media": "WAV / PCM S16LE / stereo / 48 kHz / 12 seconds",
+      "size_bytes": 2304078,
+      "sha256": "0160a75b03764de79de8443609921106cd74e62effe01ca8343dd2a6f7c0f8e3"
+    },
+    {
+      "name": "webm-vp9-opus.webm",
+      "media": "WebM / VP9 / Opus / 352x288 / 10 seconds",
+      "size_bytes": 22638337,
+      "sha256": "724cd0d18718d7ba55703197b81a4f815d416472a45ca22a7758adf29ae42c01"
+    }
+  ],
+  "generation": {
+    "script": "tools/release_audit/generate_corpus.py",
+    "ffmpeg": "Pavo.app/Contents/Frameworks/ffmpeg (FFmpeg 8.0.3, arm64)",
+    "note": "Generated media uses lavfi and the bundled FFmpeg. AV1 and VP9 streams are remuxed from the public source vectors above."
+  }
+}

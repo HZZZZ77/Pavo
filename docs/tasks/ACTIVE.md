@@ -10,7 +10,7 @@ macOS Release Readiness Audit
 
 ## Status
 
-`Phase 2C Implementation Complete - macOS 13 Host Validation Pending`
+`Phase 3A Audit Complete - Findings Await Review`
 
 ## Priority
 
@@ -119,6 +119,16 @@ macOS Release Readiness Audit
 - 当前 UI、播放功能和 Phase 2B bundle 内媒体运行时保持不变。
 - README 与验证脚本准确记录固定工具链和 deployment target 检查方式。
 
+### Phase 3A Acceptance Criteria
+
+- 使用打包后的 `Pavo.app` 和 bundle 内媒体运行时完成主流封装、视频编码、音频编码和字幕矩阵测试。
+- 记录每个测试素材的来源、媒体信息和 SHA-256，不向 Git 添加大型媒体文件。
+- 验证 1080p、4K、高码率、长视频、大文件定位及播放器核心交互回归。
+- 使用 `hwdec-current` 或等价运行时属性记录 VideoToolbox、软件解码或 copy-back 的实际状态。
+- 对 HDR10 与 HLG 分别记录元数据识别、解码、输出和色调映射状态，不将文件可播放等同于完整 HDR 支持。
+- 明确标记当前主机无法完成的 macOS 13 与真实 HDR 显示视觉验收。
+- 发现问题时先记录和汇报，不修改 UI、播放逻辑或其他产品功能代码。
+
 ## Testing
 
 ```bash
@@ -193,6 +203,49 @@ python3.14 tools/media_runtime/verify_bundle.py \
 - 悬停进度条并确认 bundle 内 FFmpeg 缩略图链路可用。
 - 运行 `venv/bin/python -m compileall src tools/media_runtime`。
 - 运行 `git diff --check`。
+
+### Phase 3A Test Plan
+
+1. 从当前提交使用固定 Python 3.13.12 环境构建并验证 `Pavo.app`，确认测试不依赖 Homebrew。
+2. 优先使用 bundle 内 FFmpeg 生成合法的小型测试素材；仅在缺少必要编码器时下载公开测试向量，并记录 URL、SHA-256 与媒体信息。
+3. 覆盖 MP4、MKV、MOV、WebM，H.264、HEVC、VP9、AV1，以及 AAC、MP3、FLAC、Opus、AC-3、E-AC-3。
+4. 覆盖外挂 SRT、外挂 ASS、内嵌字幕以及字幕切换、关闭和同步。
+5. 覆盖 1080p、4K、高码率、长视频、大文件快速打开和 seek，并回归播放控制、播放列表、缩略图、全屏、PiP、Clear Playlist 和 Recent Files。
+6. 使用 bundle 内 libmpv 的真实运行属性采集解码器、`hwdec-current`、视频参数、HDR 元数据和输出色彩状态。
+7. 将素材清单与测试报告写入小型文本文件，运行 `compileall` 和 `git diff --check`，不提交测试媒体或生成目录。
+
+### Phase 3A Non Goals
+
+- 不修改 UI、播放逻辑、媒体解码选项或画质策略。
+- 不增加产品功能，不为测试通过而静默降低画质。
+- 不开始签名、公证、DMG 或 GitHub Release。
+- 不将测试素材、构建产物或其他大型生成文件提交到 Git。
+- 不把当前 macOS 主机测试替代为 macOS 13 或真实 HDR 显示的最终视觉验收。
+
+### Phase 3A Progress
+
+- Phase 3A 于 2026-07-30 从暂停节点恢复；已完成测试矩阵和报告，未修改产品功能代码，未 commit 或 push。
+- 测试主机已记录为 Apple M4、arm64、24 GB 内存、macOS 26.5.2；当前没有 macOS 13 主机或已确认的真实 HDR 显示环境。
+- 已使用固定 Python 3.13.12 环境重新生成临时 `Pavo.app`，产物位于 `/private/tmp/pavo-phase3a/dist/Pavo.app`，未加入 Git。
+- `verify_bundle.py` 已通过：检查 54 个 Mach-O 文件，无 deployment target 违规、无 Homebrew 等禁止路径；bundle 内 FFmpeg、libmpv 初始化和 17 份许可证检查通过。
+- 已确认 bundle 内 FFmpeg 为 arm64，包含 VideoToolbox，以及 H.264、HEVC、VP9、AV1、AAC、MP3、FLAC、Opus、AC-3、E-AC-3 所需解码器。
+- 已在 `/private/tmp/pavo-phase3a/assets/` 准备公开或自行生成的临时测试素材，覆盖 VP9、AV1、HDR10、MP3、AAC、FLAC、Opus、AC-3、E-AC-3、SRT、ASS、H.264、HEVC、HLG、4K60 高码率和两小时时长场景；素材未加入 Git。
+- 公开素材来源、媒体信息和 SHA-256 已记录到 `tools/release_audit/corpus-manifest.json`。
+- 完整测试结果和未覆盖范围已记录到 `docs/release/PAVO-006-phase3a-playback-audit.md`。
+
+### Phase 3A Results
+
+- MP4、MKV、MOV、WebM，以及 H.264、HEVC、VP9、AV1 播放通过。
+- AAC、MP3、FLAC、Opus、AC-3、E-AC-3 播放通过；MKV 内 AAC、AC-3、E-AC-3 音轨切换通过。
+- 所有视频编码实际使用 `videotoolbox-copy`，属于 VideoToolbox 硬解 copy-back；未观察到软件解码或零拷贝路径。
+- H.264 1080p、AV1 1080p60、HEVC 4K60、HDR10 和 HLG 的五秒持续采样均为 0 decoder drop、0 VO drop。
+- 外挂和内嵌 SRT/ASS 加载、选择和 1 秒 cue 同步通过；libmpv 可关闭字幕，但当前 UI 没有 Subtitle Off 操作，也没有字幕延迟调整。
+- 暂停、恢复、倍速、音量、短文件 seek、两小时文件 seek、自动下一项、Recent Files、缩略图、全屏、PiP 和 Clear Playlist 通过。
+- 打包应用通过原生 `Cmd+O` 打开 4K60 文件并实际显示视频画面；日志确认加载 bundle 内 libmpv，mpv 与 OpenGL 初始化成功。
+- 当前没有手动 Previous/Next 功能；删除当前播放项后媒体继续播放但 `current_idx` 变为 `-1`，后续自动下一项失去上下文。
+- HDR10 的 PQ/BT.2020 和 HLG 的 HLG/BT.2020 元数据均被 mpv 识别，两个文件均使用 `videotoolbox-copy`；输出与 tone mapping 仍为 `auto`，未完成真实 HDR 显示视觉验收。
+- 真实 macOS 13、真实 HDR 显示器和多 GB 文件仍未覆盖，PAVO-006 不得据此标记为 Completed。
+- `tools/media_runtime/README.md` 仍可能包含旧 PySide6 6.10.2/macOS 15 阻塞描述；本阶段只记录问题，未修改该文档。
 
 ### Phase 1 Results
 

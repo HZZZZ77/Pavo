@@ -4,7 +4,10 @@ from PySide6.QtCore import Qt, QMetaObject, Signal, QTimer
 from PySide6.QtWidgets import QApplication
 import mpv
 import ctypes
-import traceback
+import logging
+
+
+logger = logging.getLogger("pavo.video_widget")
 
 class PavoVideoWidget(QOpenGLWidget):
     clicked = Signal()
@@ -17,6 +20,7 @@ class PavoVideoWidget(QOpenGLWidget):
         self.engine = engine
         self.render_ctx = None
         self._get_proc_addr_c = None 
+        self._render_error_logged = False
         
         self.setStyleSheet("background-color: #000000;")
         self.setAcceptDrops(True)
@@ -50,12 +54,17 @@ class PavoVideoWidget(QOpenGLWidget):
                 opengl_init_params={'get_proc_address': self._get_proc_addr_c}
             )
             self.render_ctx.update_cb = self.on_mpv_update
+            logger.info("OpenGL render context initialized")
             
-        except Exception as e:
-            print(f"[VideoWidget] Fatal error during initializeGL: {e}")
+        except Exception:
+            logger.exception("Failed to initialize the OpenGL render context")
 
     def paintGL(self):
         try:
+            if not self.engine.current_media_path:
+                self._clear_to_black()
+                return
+
             if self.render_ctx:
                 self.render_ctx.update()
                 ratio = self.devicePixelRatio()
@@ -67,7 +76,18 @@ class PavoVideoWidget(QOpenGLWidget):
                         'fbo': self.defaultFramebufferObject()
                     }
                 )
-        except Exception: pass
+        except Exception:
+            if not self._render_error_logged:
+                logger.exception("Video frame rendering failed")
+                self._render_error_logged = True
+
+    def _clear_to_black(self):
+        ctx = QOpenGLContext.currentContext()
+        if not ctx:
+            return
+        funcs = ctx.functions()
+        funcs.glClearColor(0.0, 0.0, 0.0, 1.0)
+        funcs.glClear(0x00004000)
 
     def on_mpv_update(self):
         QMetaObject.invokeMethod(self, "update", Qt.QueuedConnection)

@@ -1,24 +1,42 @@
 import os
-import sys
 import subprocess
 import threading
-import shutil
+import logging
 
 import bootstrap
 bootstrap.setup_pavo_env()
 
-import mpv
+logger = logging.getLogger("pavo.engine")
+
+MPV_IMPORT_ERROR = None
+try:
+    with bootstrap.use_resolved_libmpv():
+        import mpv
+except OSError as exc:
+    logger.exception("Failed to load libmpv")
+    mpv = None
+    MPV_IMPORT_ERROR = str(exc)
+
 from PySide6.QtCore import QObject, Signal
 
 class PavoEngine(QObject):
-    thumbnail_ready = Signal(int, bytes)
+    thumbnail_ready = Signal(str, int, int, bytes)
     # 👑 新增：向外界汇报播放状态的专线
     file_ended = Signal()
     file_loaded = Signal()
+    error_occurred = Signal(str)
+    play_state_changed = Signal(bool)
 
     def __init__(self):
         super().__init__()
+        self.thumb_cache = {}
+        self.thumb_inflight = set()
+        self.thumb_lock = threading.Lock()
+        self.thumbnail_generation_id = 0
+        self.current_media_path = None
         try:
+            if mpv is None:
+                raise RuntimeError(MPV_IMPORT_ERROR or "libmpv is unavailable")
             self.player = mpv.MPV(
                 hwdec="auto",
                 vo="libmpv",
@@ -30,15 +48,18 @@ class PavoEngine(QObject):
             self.playback_speed = 1.0
             self.current_aspect = "Auto"
             
-            self.thumb_cache = {}
-            self.current_media_path = None
-            
             # 👑 埋入探针：监听视频结尾和加载完成
             self.player.observe_property('eof-reached', self._on_eof)
             self.player.observe_property('duration', self._on_duration)
+            self.player.observe_property('pause', self._on_pause)
             
         except Exception as e:
+            logger.exception("Failed to initialize mpv")
             self.player = None
+            self.init_error = str(e)
+        else:
+            logger.info("mpv initialized")
+            self.init_error = None
 
     def _on_eof(self, name, value):
         if value:
@@ -48,43 +69,67 @@ class PavoEngine(QObject):
         if value is not None and value > 0:
             self.file_loaded.emit()
 
+    def _on_pause(self, name, value):
+        if value is not None:
+            self.play_state_changed.emit(not value)
+
     def play(self, media_path):
-        if self.player:
-            self.current_media_path = media_path
-            self.thumb_cache.clear()
+        if not self.player:
+            logger.error("Playback requested without an initialized mpv player")
+            self.error_occurred.emit("Playback engine failed to initialize.")
+            return False
+
+        media_name = os.path.basename(media_path)
+        if not os.path.exists(media_path):
+            logger.warning("Media file not found: %s", media_name)
+            self.error_occurred.emit(f"File not found: {os.path.basename(media_path)}")
+            return False
+
+        try:
+            logger.info("Opening media: %s", media_name)
+            with self.thumb_lock:
+                self.thumbnail_generation_id += 1
+                self.current_media_path = media_path
+                self.thumb_cache.clear()
+                self.thumb_inflight.clear()
             self.player.play(media_path)
+            self.player.pause = False
+            self.play_state_changed.emit(True)
+            return True
+        except Exception as e:
+            logger.exception("Playback failed for %s", media_name)
+            self.error_occurred.emit(f"Playback failed: {e}")
+            return False
 
     def get_thumbnail(self, time_sec):
-        if not self.current_media_path: return
-        time_key = int(time_sec)
-        
-        if time_key in self.thumb_cache:
-            self.thumbnail_ready.emit(time_key, self.thumb_cache[time_key])
+        with self.thumb_lock:
+            media_path = self.current_media_path
+            generation_id = self.thumbnail_generation_id
+            if not media_path: return
+            time_key = int(time_sec)
+            request_key = (media_path, time_key)
+            if request_key in self.thumb_cache:
+                cached = self.thumb_cache[request_key]
+            else:
+                cached = None
+                if request_key in self.thumb_inflight:
+                    return
+                self.thumb_inflight.add(request_key)
+
+        if cached is not None:
+            self.thumbnail_ready.emit(media_path, generation_id, time_key, cached)
             return
 
         def _extract():
             try:
-                ffmpeg_cmd = None
-                
-                # 👑 核心魔法：PyInstaller 打包后的专属路径寻址 (sys._MEIPASS)
-                if hasattr(sys, '_MEIPASS'):
-                    bundled_ffmpeg = os.path.join(sys._MEIPASS, 'ffmpeg')
-                    if os.path.exists(bundled_ffmpeg):
-                        ffmpeg_cmd = bundled_ffmpeg
-                
-                # 如果没打包（本地写代码测试时），用系统里的 ffmpeg
+                ffmpeg_cmd = bootstrap.resolve_ffmpeg_path()
                 if not ffmpeg_cmd:
-                    ffmpeg_cmd = shutil.which('ffmpeg')
-                    if not ffmpeg_cmd:
-                        if os.path.exists('/opt/homebrew/bin/ffmpeg'):
-                            ffmpeg_cmd = '/opt/homebrew/bin/ffmpeg'
-                        elif os.path.exists('/usr/local/bin/ffmpeg'):
-                            ffmpeg_cmd = '/usr/local/bin/ffmpeg'
-                        else:
-                            ffmpeg_cmd = 'ffmpeg'
+                    logger.warning("FFmpeg not found; thumbnail preview is unavailable")
+                    self.error_occurred.emit("FFmpeg not found. Thumbnail preview is unavailable.")
+                    return
                             
                 cmd = [
-                    ffmpeg_cmd, '-y', '-ss', str(time_key), '-i', self.current_media_path,
+                    ffmpeg_cmd, '-y', '-ss', str(time_key), '-i', media_path,
                     '-vframes', '1', '-q:v', '2', '-vf', 'scale=160:-1', '-f', 'image2', 'pipe:1'
                 ]
                 startupinfo = None
@@ -94,18 +139,61 @@ class PavoEngine(QObject):
                 
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, startupinfo=startupinfo)
                 out, _ = process.communicate()
-                
-                if out:
-                    self.thumb_cache[time_key] = out
-                    self.thumbnail_ready.emit(time_key, out)
-            except Exception as e:
-                print(f"[Engine] Extract error: {e}")
+
+                if process.returncode != 0:
+                    logger.warning(
+                        "FFmpeg thumbnail extraction failed for %s at %ss with exit code %s",
+                        os.path.basename(media_path),
+                        time_key,
+                        process.returncode,
+                    )
+                    return
+                if not out:
+                    logger.warning(
+                        "FFmpeg produced no thumbnail for %s at %ss",
+                        os.path.basename(media_path),
+                        time_key,
+                    )
+                    return
+
+                with self.thumb_lock:
+                    should_emit = media_path == self.current_media_path and generation_id == self.thumbnail_generation_id
+                    if not should_emit:
+                        return
+                    self.thumb_cache[request_key] = out
+                self.thumbnail_ready.emit(media_path, generation_id, time_key, out)
+            except Exception:
+                logger.exception(
+                    "Thumbnail extraction failed for %s at %ss",
+                    os.path.basename(media_path),
+                    time_key,
+                )
+            finally:
+                with self.thumb_lock:
+                    self.thumb_inflight.discard(request_key)
                 
         threading.Thread(target=_extract, daemon=True).start()
 
     def set_playing(self, is_playing: bool):
         if self.player:
             self.player.pause = not is_playing
+
+    def stop(self):
+        with self.thumb_lock:
+            self.thumbnail_generation_id += 1
+            self.current_media_path = None
+            self.thumb_cache.clear()
+            self.thumb_inflight.clear()
+        if self.player:
+            try:
+                self.player.command('stop')
+            except Exception:
+                logger.debug("mpv stop command failed; trying fallback", exc_info=True)
+                try:
+                    self.player.stop()
+                except Exception:
+                    logger.exception("Failed to stop mpv")
+        self.play_state_changed.emit(False)
 
     def set_volume(self, volume: int):
         if self.player:
@@ -120,7 +208,8 @@ class PavoEngine(QObject):
             try:
                 self.player.speed = speed
                 self.playback_speed = speed
-            except: pass
+            except Exception:
+                logger.warning("Failed to set playback speed to %s", speed, exc_info=True)
 
     def get_progress(self):
         try:
@@ -139,7 +228,8 @@ class PavoEngine(QObject):
                 if d is not None and d > 0:
                     target_time = d * percent
                     self.player.seek(target_time, reference="absolute", precision="keyframes")
-        except: pass
+        except Exception:
+            logger.warning("Failed to seek to %.2f%%", percent * 100, exc_info=True)
 
     def set_aspect_ratio(self, ratio: str):
         if self.player:
@@ -149,7 +239,8 @@ class PavoEngine(QObject):
                     self.player.video_aspect_override = "-1"
                 else:
                     self.player.video_aspect_override = ratio
-            except: pass
+            except Exception:
+                logger.warning("Failed to set aspect ratio to %s", ratio, exc_info=True)
 
     def get_tracks(self, track_type):
         tracks = []
@@ -171,7 +262,8 @@ class PavoEngine(QObject):
                         'name': name,
                         'selected': t.get('selected', False)
                     })
-        except: pass
+        except Exception:
+            logger.warning("Failed to read %s tracks", track_type, exc_info=True)
         return tracks
 
     def get_audio_tracks(self):
@@ -184,16 +276,23 @@ class PavoEngine(QObject):
         if self.player:
             try:
                 self.player.aid = track_id
-            except: pass
+            except Exception:
+                logger.warning("Failed to select audio track %s", track_id, exc_info=True)
 
     def set_subtitle_track(self, track_id):
         if self.player:
             try:
                 self.player.sid = track_id
-            except: pass
+            except Exception:
+                logger.warning("Failed to select subtitle track %s", track_id, exc_info=True)
 
     def add_external_subtitle(self, file_path):
         if self.player:
             try:
                 self.player.sub_add(file_path)
-            except: pass
+            except Exception:
+                logger.warning(
+                    "Failed to load external subtitle %s",
+                    os.path.basename(file_path),
+                    exc_info=True,
+                )

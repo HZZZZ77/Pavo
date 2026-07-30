@@ -1,7 +1,7 @@
 import time
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QGraphicsDropShadowEffect, QLabel
-from PySide6.QtCore import Qt, Signal, QPoint, QByteArray, QSize
-from PySide6.QtGui import QColor, QPixmap, QPainter, QIcon
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QGraphicsDropShadowEffect, QLabel, QStyle, QStyleOptionSlider
+from PySide6.QtCore import Qt, Signal, QPoint, QByteArray, QSize, QRectF
+from PySide6.QtGui import QColor, QPixmap, QPainter, QIcon, QLinearGradient, QPen
 
 try:
     from PySide6.QtSvg import QSvgRenderer
@@ -32,6 +32,80 @@ class HoverSlider(QSlider):
         self.setMouseTracking(True)
         self.total_time = 0
 
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+
+        has_media = self.isEnabled() and self.total_time > 0
+        is_hovered = self.underMouse() and has_media
+        track_height = 5.0 if is_hovered else 3.0
+        handle_margin = 5.0
+        track_width = max(0.0, self.width() - (handle_margin * 2))
+        track_rect = QRectF(
+            handle_margin,
+            (self.height() - track_height) / 2.0,
+            track_width,
+            track_height,
+        )
+
+        track_alpha = 48 if is_hovered else (34 if has_media else 24)
+        painter.setBrush(QColor(255, 255, 255, track_alpha))
+        painter.drawRoundedRect(
+            track_rect,
+            track_height / 2.0,
+            track_height / 2.0,
+        )
+
+        if not has_media:
+            return
+
+        option = QStyleOptionSlider()
+        self.initStyleOption(option)
+        available_width = max(0, int(track_width))
+        slider_position = QStyle.sliderPositionFromValue(
+            self.minimum(),
+            self.maximum(),
+            self.value(),
+            available_width,
+            option.upsideDown,
+        )
+        handle_x = track_rect.left() + slider_position
+
+        if slider_position > 0:
+            played_rect = QRectF(
+                track_rect.left(),
+                track_rect.top(),
+                slider_position,
+                track_rect.height(),
+            )
+            played_gradient = QLinearGradient(
+                track_rect.left(),
+                track_rect.center().y(),
+                track_rect.right(),
+                track_rect.center().y(),
+            )
+            played_gradient.setColorAt(0.0, QColor("#0A84FF"))
+            played_gradient.setColorAt(1.0, QColor("#007AFF"))
+            painter.setBrush(played_gradient)
+            painter.drawRoundedRect(
+                played_rect,
+                track_height / 2.0,
+                track_height / 2.0,
+            )
+
+        handle_radius = 5.0 if is_hovered or self.isSliderDown() else 4.0
+        handle_color = QColor("#007AFF") if self.isSliderDown() else QColor(255, 255, 255, 235)
+        painter.setBrush(handle_color)
+        painter.drawEllipse(
+            QRectF(
+                handle_x - handle_radius,
+                (self.height() / 2.0) - handle_radius,
+                handle_radius * 2.0,
+                handle_radius * 2.0,
+            )
+        )
+
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
         if self.total_time > 0:
@@ -42,11 +116,22 @@ class HoverSlider(QSlider):
 
     def enterEvent(self, event):
         super().enterEvent(event)
-        self.hover_entered.emit()
+        self.update()
+        if self.total_time > 0:
+            self.hover_entered.emit()
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
+        self.update()
         self.hover_left.emit()
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self.update()
 
 class HUDPanel(QWidget):
     play_state_changed = Signal(bool)
@@ -71,6 +156,23 @@ class HUDPanel(QWidget):
         self.icons = {}
         self._preload_icons()
         self.init_ui()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        gradient.setColorAt(0.0, QColor(255, 255, 255, 30))
+        gradient.setColorAt(0.5, QColor(200, 200, 200, 15))
+        gradient.setColorAt(1.0, QColor(150, 150, 150, 25))
+
+        painter.setPen(QPen(QColor(255, 255, 255, 90), 1))
+        painter.setBrush(gradient)
+        painter.drawRoundedRect(rect, 20.0, 20.0)
+        painter.end()
 
     def _create_svg_icon(self, svg_string, size=64):
         if not HAS_SVG: return QIcon()
@@ -105,31 +207,14 @@ class HUDPanel(QWidget):
 
         self.setStyleSheet("""
             QWidget { background-color: transparent; }
-            HUDPanel {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 rgba(255, 255, 255, 30),
-                                            stop:0.5 rgba(200, 200, 200, 15),
-                                            stop:1 rgba(150, 150, 150, 25));
-                border-top: 1px solid rgba(255, 255, 255, 160);
-                border-left: 1px solid rgba(255, 255, 255, 90);
-                border-right: 1px solid rgba(255, 255, 255, 90);
-                border-bottom: 1px solid rgba(255, 255, 255, 30);
-                border-radius: 20px;
-            }
             QPushButton { background-color: transparent; border: none; border-radius: 8px; }
-            QPushButton:hover { background-color: rgba(255, 255, 255, 30); }
+            QPushButton:hover { background-color: rgba(255, 255, 255, 36); }
+            QPushButton:pressed { background-color: rgba(255, 255, 255, 54); }
             QLabel {
                 color: rgba(255, 255, 255, 210); font-size: 13px; font-weight: 500; 
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif; 
-                font-variant-numeric: tabular-nums;
             }
             QSlider { background: transparent; }
-            QSlider#ProgressBar::groove:horizontal { border: none; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 40); }
-            QSlider#ProgressBar::sub-page:horizontal { background: rgba(255, 255, 255, 200); border-radius: 2px; }
-            QSlider#ProgressBar::add-page:horizontal { background: transparent; }
-            QSlider#ProgressBar::handle:horizontal { width: 3px; height: 12px; margin: -4px 0px; background: white; border-radius: 1px; }
-            QSlider#ProgressBar:hover::groove:horizontal { height: 5px; border-radius: 3px;}
-            QSlider#ProgressBar:hover::handle:horizontal { height: 14px; margin: -4px 0px;}
             QSlider#VolumeBar::groove:horizontal { border: none; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 40); }
             QSlider#VolumeBar::sub-page:horizontal { background: #007AFF; border-radius: 2px; }
             QSlider#VolumeBar::add-page:horizontal { background: transparent; }
@@ -154,6 +239,7 @@ class HUDPanel(QWidget):
         self.mute_btn.setIcon(self.icons['vol'])
         self.mute_btn.setIconSize(QSize(20, 20))
         self.mute_btn.setFixedSize(30, 30)
+        self.mute_btn.setToolTip("Mute / Unmute")
         
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setObjectName("VolumeBar")
@@ -176,16 +262,19 @@ class HUDPanel(QWidget):
         self.rewind_btn.setIcon(self.icons['rewind'])
         self.rewind_btn.setIconSize(QSize(24, 24))
         self.rewind_btn.setFixedSize(36, 36)
+        self.rewind_btn.setToolTip("Rewind 10 Seconds")
         
         self.play_btn = QPushButton()
         self.play_btn.setIcon(self.icons['pause']) 
         self.play_btn.setIconSize(QSize(32, 32))
         self.play_btn.setFixedSize(44, 44) 
+        self.play_btn.setToolTip("Play / Pause")
         
         self.forward_btn = QPushButton()
         self.forward_btn.setIcon(self.icons['forward'])
         self.forward_btn.setIconSize(QSize(24, 24))
         self.forward_btn.setFixedSize(36, 36)
+        self.forward_btn.setToolTip("Forward 10 Seconds")
         
         center_layout.addWidget(self.rewind_btn)
         center_layout.addWidget(self.play_btn)
@@ -203,27 +292,32 @@ class HUDPanel(QWidget):
         self.subtitle_btn.setIcon(self.icons['cc'])
         self.subtitle_btn.setIconSize(QSize(20, 20))
         self.subtitle_btn.setFixedSize(30, 30)
+        self.subtitle_btn.setToolTip("Subtitles")
         
         self.pip_btn = QPushButton()
         self.pip_btn.setIcon(self.icons['pip'])
         self.pip_btn.setIconSize(QSize(20, 20))
         self.pip_btn.setFixedSize(30, 30)
+        self.pip_btn.setToolTip("Picture in Picture")
 
         # 👑 新增：播放列表专属按钮
         self.playlist_btn = QPushButton()
         self.playlist_btn.setIcon(self.icons['playlist'])
         self.playlist_btn.setIconSize(QSize(20, 20))
         self.playlist_btn.setFixedSize(30, 30)
+        self.playlist_btn.setToolTip("Playlist")
 
         self.settings_btn = QPushButton()
         self.settings_btn.setIcon(self.icons['settings'])
         self.settings_btn.setIconSize(QSize(20, 20))
         self.settings_btn.setFixedSize(30, 30)
+        self.settings_btn.setToolTip("Playback Settings")
         
         self.fullscreen_btn = QPushButton()
         self.fullscreen_btn.setIcon(self.icons['fullscreen'])
         self.fullscreen_btn.setIconSize(QSize(20, 20))
         self.fullscreen_btn.setFixedSize(30, 30)
+        self.fullscreen_btn.setToolTip("Full Screen")
         
         util_layout.addWidget(self.subtitle_btn)
         util_layout.addWidget(self.pip_btn)
@@ -271,6 +365,7 @@ class HUDPanel(QWidget):
         self.subtitle_btn.clicked.connect(self.subtitle_requested.emit)
         self.pip_btn.clicked.connect(self.pip_requested.emit)
         self.playlist_btn.clicked.connect(self.playlist_requested.emit) # 连线新按钮
+        self.reset_progress()
 
     def toggle_play_ui(self):
         self.is_playing = not self.is_playing
@@ -284,12 +379,18 @@ class HUDPanel(QWidget):
 
     def on_slider_moved(self, value):
         self.user_activity.emit() 
+        if self.progress_slider.total_time <= 0:
+            self.progress_slider.setValue(0)
+            return
         curr = time.time()
         if curr - self.last_seek_time > 0.15:
             self.seek_requested.emit(value / 1000.0)
             self.last_seek_time = curr
 
     def on_seek(self):
+        if self.progress_slider.total_time <= 0:
+            self.progress_slider.setValue(0)
+            return
         self.seek_requested.emit(self.progress_slider.value() / 1000.0)
 
     def format_time(self, s):
@@ -297,12 +398,23 @@ class HUDPanel(QWidget):
         return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}" if s >= 3600 else f"{(s%3600)//60:02d}:{s%60:02d}"
 
     def update_progress(self, current, total):
-        if total > 0:
-            self.progress_slider.total_time = total
-            self.curr_time_label.setText(self.format_time(current))
-            self.total_time_label.setText(self.format_time(total))
-            if not self.progress_slider.isSliderDown():
-                self.progress_slider.setValue(int((current / total) * 1000))
+        if total <= 0:
+            self.reset_progress()
+            return
+
+        self.progress_slider.setEnabled(True)
+        self.progress_slider.total_time = total
+        self.curr_time_label.setText(self.format_time(current))
+        self.total_time_label.setText(self.format_time(total))
+        if not self.progress_slider.isSliderDown():
+            self.progress_slider.setValue(int((current / total) * 1000))
+
+    def reset_progress(self):
+        self.progress_slider.total_time = 0
+        self.progress_slider.setValue(0)
+        self.progress_slider.setEnabled(False)
+        self.curr_time_label.setText("00:00")
+        self.total_time_label.setText("00:00")
 
     def enterEvent(self, event):
         self.user_activity.emit() 

@@ -2,6 +2,93 @@
 
 ## Task ID
 
+`PAVO-008`
+
+## Title
+
+Fix Release Blocking P1 Bugs
+
+## Status
+
+`Testing - Manual Verification Pending`
+
+## Priority
+
+`P1`
+
+## Created
+
+`2026-07-30`
+
+## Objective
+
+修复 PAVO-006 Release Audit 发现的字幕关闭、播放列表手动导航和删除当前播放项三个 P1 问题，使首发候选的播放状态保持一致。
+
+## Background
+
+Phase 3A 播放审计确认 libmpv 支持 `sid=no`，但当前 UI 没有字幕关闭入口；播放列表仅支持自动下一项，没有手动 Previous/Next；删除当前播放项后 `current_idx` 会变为 `-1`，导致后续自动下一项失去上下文。
+
+## Requirements
+
+- 字幕菜单提供用户可见的 `Subtitle Off`，并通过现有引擎接口设置 `sid=no`。
+- 字幕菜单每次打开时根据 libmpv 当前选轨状态同步勾选项。
+- 提供 Previous 和 Next 操作，并与 `current_idx` 保持一致。
+- 自动下一项与手动 Next 复用同一播放列表导航逻辑。
+- 删除当前播放项后选择有效的替代项；播放列表为空时进入完整空状态。
+- 删除非当前播放项不得重新加载或中断当前媒体。
+
+## Scope
+
+- `src/main.py`
+- `docs/tasks/ACTIVE.md`
+
+## Non Goals
+
+- 不修改 Runtime、`src/engine.py` 或视频渲染。
+- 不修改 HUD 布局或整体 UI 风格。
+- 不修改 README 或打包配置。
+- 不增加循环播放、随机播放或其他播放列表功能。
+- 不进行架构重构。
+
+## Acceptance Criteria
+
+- 字幕菜单始终显示 `Subtitle Off`，选择后 libmpv 的字幕轨为 `no`。
+- 切换媒体后字幕菜单勾选状态反映当前媒体的真实选轨状态。
+- Previous 和 Next 能够加载相邻播放列表项目，首尾边界不崩溃。
+- 播放结束通过与手动 Next 相同的逻辑继续下一项。
+- 删除当前项后 `current_idx` 指向有效项目，后续自动下一项仍可工作。
+- 删除唯一项目后播放器进入空状态。
+- 删除非当前项不改变当前播放媒体。
+- `python3 -m compileall src` 和 `git diff --check` 通过。
+
+## Testing
+
+- 运行 `python3 -m compileall src`。
+- 运行 `git diff --check`。
+- 验证有字幕、无字幕和切换媒体后的 `Subtitle Off` 状态。
+- 验证 Previous、Next、自动下一项和首尾边界。
+- 验证删除当前项、唯一项、队尾当前项和非当前项。
+
+自动检查结果：
+
+- `python3 -m compileall src`：通过。
+- `git diff --check`：通过。
+- 内存状态测试：Previous、Next、播放结束自动 Next、首尾边界通过。
+- 内存状态测试：删除当前项、删除非当前项和删除唯一项通过。
+- 菜单状态测试：`Subtitle Off` 勾选同步及调用 `set_subtitle_track("no")` 通过。
+
+仍需使用真实媒体手动验证字幕渲染、菜单交互、播放切换和删除后的连续播放。
+
+## Notes
+
+Planning 和 Implementation 已完成。实施限制为主窗口编排层的最小状态修复，没有新增播放模式，也没有改变现有播放与视觉架构。
+
+---
+
+# Related Release Audit Task
+
+## Task ID
+
 `PAVO-006`
 
 ## Title

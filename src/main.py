@@ -365,6 +365,17 @@ class PavoPlayer(QMainWindow):
         self.file_menu.addAction(self.clear_playlist_action)
         self.addAction(self.open_file_action)
 
+        self.playback_menu = self.menuBar().addMenu("Playback")
+        self.previous_action = QAction("Previous", self)
+        self.previous_action.setShortcut(QKeySequence("Meta+Shift+Left"))
+        self.previous_action.triggered.connect(self.play_previous)
+        self.playback_menu.addAction(self.previous_action)
+        self.next_action = QAction("Next", self)
+        self.next_action.setShortcut(QKeySequence("Meta+Shift+Right"))
+        self.next_action.triggered.connect(self.play_next)
+        self.playback_menu.addAction(self.next_action)
+        self._update_playlist_navigation_actions()
+
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.sync_progress)
         self.timer.start(500)
@@ -426,8 +437,36 @@ class PavoPlayer(QMainWindow):
 
     def delete_selected_items(self):
         items = self.playlist_ui.selectedItems()
-        for item in items: self.playlist_ui.takeItem(self.playlist_ui.row(item))
-        self._sync_playlist_order()
+        if not items:
+            return
+
+        selected_rows = sorted({self.playlist_ui.row(item) for item in items})
+        current_path = self.engine.current_media_path
+        current_row = self.playlist.index(current_path) if current_path in self.playlist else -1
+        current_removed = current_row in selected_rows
+
+        for row in reversed(selected_rows):
+            self.playlist_ui.takeItem(row)
+
+        if self.playlist_ui.count() == 0:
+            self.clear_playlist()
+            return
+
+        if not current_removed:
+            self._sync_playlist_order()
+            return
+
+        self.playlist = [
+            self.playlist_ui.item(i).toolTip()
+            for i in range(self.playlist_ui.count())
+        ]
+        removed_before_current = sum(row < current_row for row in selected_rows)
+        replacement_idx = current_row - removed_before_current
+        self.current_idx = min(replacement_idx, len(self.playlist) - 1)
+        self.update_playlist_ui_selection()
+        self._update_playlist_navigation_actions()
+        self.load_local_video(self.playlist[self.current_idx])
+        self.save_data()
 
     def clear_playlist(self):
         self.engine.stop()
@@ -441,6 +480,7 @@ class PavoPlayer(QMainWindow):
         self.video_canvas.update()
         self._sync_play_button(False)
         self.empty_state.show()
+        self._update_playlist_navigation_actions()
         self.save_data()
         self.show_osd("Playlist cleared")
 
@@ -452,6 +492,7 @@ class PavoPlayer(QMainWindow):
         else:
             self.current_idx = -1
             self.playlist_ui.clearSelection()
+        self._update_playlist_navigation_actions()
         self.save_data()
 
     def toggle_playlist(self):
@@ -501,9 +542,33 @@ class PavoPlayer(QMainWindow):
             self.pending_seek = 0
 
     def _on_file_ended(self):
-        if 0 <= self.current_idx < len(self.playlist) - 1:
-            self.current_idx += 1
-            self.load_local_video(self.playlist[self.current_idx])
+        self.play_next()
+
+    def _play_playlist_index(self, index):
+        if not 0 <= index < len(self.playlist):
+            self._update_playlist_navigation_actions()
+            return False
+
+        self.current_idx = index
+        self.load_local_video(self.playlist[index])
+        return True
+
+    def play_previous(self):
+        return self._play_playlist_index(self.current_idx - 1)
+
+    def play_next(self):
+        return self._play_playlist_index(self.current_idx + 1)
+
+    def _update_playlist_navigation_actions(self):
+        if not hasattr(self, "previous_action"):
+            return
+        self.previous_action.setEnabled(
+            0 < self.current_idx < len(self.playlist)
+        )
+        self.next_action.setEnabled(
+            bool(self.playlist)
+            and -1 <= self.current_idx < len(self.playlist) - 1
+        )
 
     def open_files(self):
         file_paths, _ = QFileDialog.getOpenFileNames(
@@ -592,6 +657,7 @@ class PavoPlayer(QMainWindow):
             item.setToolTip(path)
             self.playlist_ui.addItem(item)
         self.update_playlist_ui_selection()
+        self._update_playlist_navigation_actions()
 
     def update_playlist_ui_selection(self):
         if 0 <= self.current_idx < self.playlist_ui.count():
@@ -599,8 +665,8 @@ class PavoPlayer(QMainWindow):
 
     def _on_playlist_item_clicked(self, item):
         idx = self.playlist_ui.row(item)
-        self.current_idx = idx
-        self.load_local_video(self.playlist[idx])
+        if not self._play_playlist_index(idx):
+            return
         self._playlist_was_visible = False
         self.pl_fade_anim.setEndValue(0.0); self.pl_fade_anim.start()
         QTimer.singleShot(300, self.playlist_panel.hide)
@@ -620,6 +686,7 @@ class PavoPlayer(QMainWindow):
             return
         self.empty_state.hide()
         self.update_playlist_ui_selection()
+        self._update_playlist_navigation_actions()
         if hasattr(self.hud, 'is_playing'):
             self._sync_play_button(True)
 
@@ -762,11 +829,22 @@ class PavoPlayer(QMainWindow):
     def show_subtitle_menu(self):
         menu = self._create_styled_menu()
         subs = self.engine.get_subtitle_tracks()
+
+        off_act = QAction("Subtitle Off", self)
+        off_act.setCheckable(True)
+        off_act.setChecked(not any(track['selected'] for track in subs))
+        off_act.setEnabled(bool(self.engine.current_media_path))
+        off_act.triggered.connect(
+            lambda checked=False: self.engine.set_subtitle_track("no")
+        )
+        menu.addAction(off_act)
+
         if not subs:
             act = QAction("🚫 No subtitles available", self)
             act.setEnabled(False)
             menu.addAction(act)
         else:
+            menu.addSeparator()
             for t in subs:
                 act = QAction(t['name'], self)
                 act.setCheckable(True)

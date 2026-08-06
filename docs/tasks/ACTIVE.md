@@ -2,6 +2,96 @@
 
 ## Task ID
 
+`PAVO-011`
+
+## Title
+
+Minimal PiP Experience
+
+## Status
+
+`Completed`
+
+## Priority
+
+`P1`
+
+## Created
+
+`2026-08-06`
+
+## Objective
+
+将现有缩小版主窗口式画中画改为专用的极简播放界面，同时继续复用同一个 mpv/OpenGL 视频画布和主窗口播放编排逻辑。
+
+## Background
+
+当前 PiP 通过改变主窗口 flags、尺寸并调用 `HUDPanel.set_pip_mode()` 隐藏部分控件，完整 HUD、时间和可交互进度仍然存在。视频渲染由单个 `PavoVideoWidget` 和 mpv OpenGL render context 承担，创建第二套视频窗口会增加上下文重建和播放状态分叉风险。
+
+## Requirements
+
+- PiP 默认只显示视频画面，鼠标活动时显示专用控制层。
+- 播放时控制层在鼠标离开或无操作后自动隐藏；暂停时保持显示。
+- 中央只显示 Previous、Play/Pause、Next。
+- 左上角提供返回主窗口，右上角提供关闭 PiP。
+- 隐藏完整 HUD、音量、时间文本、可交互进度、OSD、播放列表和缩略图。
+- 底部显示极细、只读的播放进度提示。
+- 保持窗口置顶、拖动、自由缩放和圆角表现。
+- PiP 控件复用主窗口已有 Previous、Next 和播放状态逻辑，并与 mpv 实际状态同步。
+- 增加覆盖专用控制层状态、进度和交互信号的自动化测试。
+
+## Scope
+
+- `src/main.py`
+- `src/components/pip_overlay.py`（新增）
+- `tests/test_pip_overlay.py`（新增）
+- `tests/test_pip_main_integration.py`（新增）
+- `docs/tasks/ACTIVE.md`
+
+## Non Goals
+
+- 不创建第二个 mpv 实例或第二套 OpenGL 渲染上下文。
+- 不修改 `src/engine.py`、`src/video_widget.py` 或现有 HUD 的布局与功能。
+- 不修改 Runtime、打包配置、README 或发布文档。
+- 不增加音量、字幕、时间文本、可交互 seek 或其他 PiP 功能。
+- 不重构播放列表和播放引擎架构。
+
+## Acceptance Criteria
+
+- 进入 PiP 后只显示视频、专用控制层和只读细进度提示，完整 HUD 不可见。
+- Previous、Play/Pause、Next 调用现有主窗口逻辑，首尾禁用状态正确。
+- 播放状态由 engine 信号同步到主 HUD 与 PiP 控件。
+- 播放时控制层能自动隐藏并可由鼠标活动唤醒；暂停时保持显示。
+- 返回和关闭 PiP 均恢复标准主窗口，播放不中断。
+- PiP 保持置顶、可拖动、可缩放；退出后恢复原窗口几何和可见面板状态。
+- `python -m compileall`、相关自动化测试和 `git diff --check` 通过。
+
+## Testing
+
+- `venv/bin/python -m compileall src tests`
+- `QT_QPA_PLATFORM=offscreen venv/bin/python -m unittest discover -s tests -v`
+- `git diff --check`
+- 实机验证进入/退出 PiP、播放与暂停自动显隐、播放列表导航、拖动和缩放。
+
+自动检查结果：
+
+- `venv/bin/python -m compileall src tests`：通过。
+- `QT_QPA_PLATFORM=offscreen venv/bin/python -m unittest discover -s tests -v`：10 项通过。
+- `git diff --check`：通过。
+- 主窗口伪 engine/视频画布集成测试覆盖 PiP 进入与恢复、播放和列表按钮复用、Clear Playlist 空状态。
+- macOS Cocoa 原生窗口烟测：CALayer 连续圆角启用与恢复通过。
+- 实机视觉验收：窗口圆角、视频比例、无边框半透明控件和只读进度提示通过。
+
+## Notes
+
+Planning、Implementation、自动化测试和实机验收均已完成。实施采用单一视频画布和专用 PiP overlay，避免复制播放控制逻辑及重建 mpv OpenGL render context。参考截图仅用于交互层级，不复用其视觉素材。实机首轮验收后加入了 macOS 原生 CALayer 连续圆角裁切，未使用 `QRegion` 或 `setMask`。第二轮验收确认顶部和底部黑条来自 PiP 初始窗口沿用主画布 `5:3` 比例，而实际视频为 `16:9`，并确认灰白光晕来自 overlay 自绘边线与原生阴影叠加。最终实现改用 mpv 实际显示尺寸计算 PiP 初始比例，显式保持 central layout 零 margin/spacing，删除全部 Qt 外轮廓绘制并将 CALayer border 设为 0，仅保留原生圆角裁切和窗口阴影。PiP 控件使用单层 QPainterPath 半透明填充，无 QSS border 或重复背景绘制。
+
+---
+
+# Related Active Task
+
+## Task ID
+
 `PAVO-009`
 
 ## Title

@@ -18,6 +18,7 @@ from engine import PavoEngine
 from video_widget import PavoVideoWidget
 from components.empty_state import EmptyState
 from components.hud_panel import HUDPanel
+from components.pip_overlay import PiPOverlay
 
 MENU_STYLE = """
     QMenu {
@@ -167,8 +168,9 @@ class PavoPlayer(QMainWindow):
         
         self._is_pip = False
         self._normal_geometry = None
+        self._normal_window_flags = None
+        self._pip_ui_state = {}
         self._playlist_was_visible = False
-        self._drag_active = False
         
         self.data_file = os.path.join(os.path.expanduser("~"), ".pavo_data.json")
         self.history = {}
@@ -187,10 +189,12 @@ class PavoPlayer(QMainWindow):
 
     def init_ui(self):
         self.central_widget = QWidget()
+        self.central_widget.setContentsMargins(0, 0, 0, 0)
         self.setCentralWidget(self.central_widget)
         
         self.main_layout = QGridLayout(self.central_widget)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
 
         self.video_canvas = PavoVideoWidget(self.engine)
         self.main_layout.addWidget(self.video_canvas, 0, 0)
@@ -202,6 +206,13 @@ class PavoPlayer(QMainWindow):
         self._install_empty_state_open_button()
 
         self.hud = HUDPanel(self.central_widget)
+
+        self.pip_overlay = PiPOverlay(self.central_widget)
+        self.pip_overlay.previous_requested.connect(self.play_previous)
+        self.pip_overlay.play_pause_requested.connect(self.hud.toggle_play_ui)
+        self.pip_overlay.next_requested.connect(self.play_next)
+        self.pip_overlay.return_requested.connect(self.exit_pip)
+        self.pip_overlay.close_requested.connect(self.exit_pip)
 
         self.thumb_popup = QWidget(self.central_widget)
         self.thumb_popup.setObjectName("thumbPopup")
@@ -308,6 +319,7 @@ class PavoPlayer(QMainWindow):
         self.hud.raise_()
         self.thumb_popup.raise_()
         self.top_osd.raise_()
+        self.pip_overlay.raise_()
 
         self.opacity_effect = QGraphicsOpacityEffect(self.hud)
         self.opacity_effect.setOpacity(1.0)
@@ -469,6 +481,8 @@ class PavoPlayer(QMainWindow):
         self.save_data()
 
     def clear_playlist(self):
+        if self._is_pip:
+            self.exit_pip()
         self.engine.stop()
         self.playlist = []
         self.current_idx = -1
@@ -477,6 +491,7 @@ class PavoPlayer(QMainWindow):
         self.playlist_ui.clearSelection()
         self.reset_thumbnail_preview()
         self.hud.reset_progress()
+        self.pip_overlay.set_progress(0, 0)
         self.video_canvas.update()
         self._sync_play_button(False)
         self.empty_state.show()
@@ -560,15 +575,19 @@ class PavoPlayer(QMainWindow):
         return self._play_playlist_index(self.current_idx + 1)
 
     def _update_playlist_navigation_actions(self):
-        if not hasattr(self, "previous_action"):
-            return
-        self.previous_action.setEnabled(
-            0 < self.current_idx < len(self.playlist)
-        )
-        self.next_action.setEnabled(
+        previous_enabled = 0 < self.current_idx < len(self.playlist)
+        next_enabled = (
             bool(self.playlist)
             and -1 <= self.current_idx < len(self.playlist) - 1
         )
+        if hasattr(self, "previous_action"):
+            self.previous_action.setEnabled(previous_enabled)
+            self.next_action.setEnabled(next_enabled)
+        if hasattr(self, "pip_overlay"):
+            self.pip_overlay.set_navigation_enabled(
+                previous_enabled,
+                next_enabled,
+            )
 
     def open_files(self):
         file_paths, _ = QFileDialog.getOpenFileNames(
@@ -694,11 +713,18 @@ class PavoPlayer(QMainWindow):
         if hasattr(self, 'hud') and hasattr(self.hud, 'play_btn'):
             self.hud.is_playing = is_playing
             self.hud.play_btn.setIcon(self.hud.icons['pause'] if is_playing else self.hud.icons['play'])
+        if hasattr(self, 'pip_overlay'):
+            self.pip_overlay.set_playing(is_playing)
 
     def show_error(self, text):
+        if self._is_pip:
+            self.exit_pip()
         self.show_osd(f"⚠️ {text}")
 
     def show_osd(self, text):
+        if self._is_pip:
+            self.pip_overlay.notify_activity()
+            return
         self.top_osd.setText(text)
         self.top_osd.adjustSize()
         self.top_osd.show()
@@ -713,10 +739,12 @@ class PavoPlayer(QMainWindow):
     def sync_progress(self):
         if not self.engine.current_media_path:
             self.hud.reset_progress()
+            self.pip_overlay.set_progress(0, 0)
             return
 
         current, total = self.engine.get_progress()
         self.hud.update_progress(current, total)
+        self.pip_overlay.set_progress(current, total)
         if total > 0:
             self.history[self.engine.current_media_path] = current
 
@@ -787,44 +815,138 @@ class PavoPlayer(QMainWindow):
         self.resizeEvent(None)
 
     def toggle_pip(self):
-        if not self._is_pip:
-            self._normal_geometry = self.geometry()
-            self._is_pip = True
-            
-            if self.playlist_panel.isVisible():
-                self.playlist_panel.hide()
-                self._playlist_was_visible = True
-            else:
-                self._playlist_was_visible = False
-                
-            aspect = self.video_canvas.width() / max(1, self.video_canvas.height())
-            pip_w = 480
-            pip_h = int(pip_w / aspect)
-            
-            self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-            
-            screen_geom = QApplication.primaryScreen().availableGeometry()
-            x = screen_geom.width() - pip_w - 20
-            y = screen_geom.height() - pip_h - 20
-            
-            self.setGeometry(x, y, pip_w, pip_h)
-            self.show()
-            if hasattr(self.hud, 'set_pip_mode'):
-                self.hud.set_pip_mode(True)
-            self.show_osd("📺 Picture-in-Picture Mode")
+        if self._is_pip:
+            self.exit_pip()
         else:
-            self._is_pip = False
-            self.setWindowFlags(Qt.Window)
-            if self._normal_geometry: 
+            self.enter_pip()
+
+    def enter_pip(self):
+        if self._is_pip:
+            return
+        if not self.engine.current_media_path:
+            self.show_error("Open a media file before entering Picture in Picture.")
+            return
+
+        self._normal_geometry = self.geometry()
+        self._normal_window_flags = self.windowFlags()
+        self._pip_ui_state = {
+            "was_fullscreen": self.isFullScreen(),
+            "menu_bar_visible": self.menuBar().isVisible(),
+            "playlist_visible": self.playlist_panel.isVisible(),
+            "empty_state_visible": self.empty_state.isVisible(),
+            "minimum_size": (self.minimumWidth(), self.minimumHeight()),
+        }
+        self._is_pip = True
+
+        self.hud_timer.stop()
+        self.fade_anim.stop()
+        self.osd_fade_anim.stop()
+        self.pl_fade_anim.stop()
+        self.reset_thumbnail_preview()
+        self.menuBar().hide()
+        self.hud.hide()
+        self.top_osd.hide()
+        self.playlist_panel.hide()
+        self.empty_state.hide()
+
+        aspect = self._pip_video_aspect_ratio()
+        pip_w = 480
+        pip_h = max(180, round(pip_w / aspect))
+        self.setMinimumSize(320, 180)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setWindowFlags(
+            Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        )
+
+        screen_geom = QApplication.primaryScreen().availableGeometry()
+        x = screen_geom.right() - pip_w - 20
+        y = screen_geom.bottom() - pip_h - 20
+        self.setGeometry(x, y, pip_w, pip_h)
+        self.show()
+
+        current, total = self.engine.get_progress()
+        self.pip_overlay.set_progress(current, total)
+        self._update_playlist_navigation_actions()
+        self._sync_play_button(self._current_engine_play_state())
+        self.pip_overlay.setGeometry(self.central_widget.rect())
+        self.pip_overlay.activate()
+
+    def exit_pip(self):
+        if not self._is_pip:
+            return
+
+        self._is_pip = False
+        self.pip_overlay.deactivate()
+        self.setMinimumSize(*self._pip_ui_state.get("minimum_size", (0, 0)))
+        self.setAttribute(Qt.WA_TranslucentBackground, False)
+        self.setWindowFlags(self._normal_window_flags or Qt.Window)
+
+        if self._pip_ui_state.get("was_fullscreen"):
+            self.showFullScreen()
+        else:
+            if self._normal_geometry:
                 self.setGeometry(self._normal_geometry)
             self.show()
-            if hasattr(self.hud, 'set_pip_mode'):
-                self.hud.set_pip_mode(False)
-            if getattr(self, '_playlist_was_visible', False):
-                self.playlist_panel.show()
-            
-            # 👑 修复：退出画中画时更新 OSD 提示，防止文本残留
-            self.show_osd("📺 Standard View")
+
+        self.menuBar().setVisible(
+            self._pip_ui_state.get("menu_bar_visible", True)
+        )
+        self.opacity_effect.setOpacity(1.0)
+        self.hud.show()
+        self.top_osd.hide()
+        self.thumb_popup.hide()
+
+        if self._pip_ui_state.get("playlist_visible"):
+            self.playlist_panel.show()
+            self.pl_opacity.setOpacity(1.0)
+        else:
+            self.playlist_panel.hide()
+
+        if self.engine.current_media_path:
+            self.empty_state.hide()
+        elif self._pip_ui_state.get("empty_state_visible", True):
+            self.empty_state.show()
+
+        self.resizeEvent(None)
+        self.wake_hud()
+
+    def _current_engine_play_state(self):
+        fallback = getattr(self.hud, "is_playing", False)
+        if not self.engine.current_media_path or not self.engine.player:
+            return False
+        try:
+            paused = self.engine.player.pause
+        except Exception:
+            return fallback
+        return fallback if paused is None else not paused
+
+    def _pip_video_aspect_ratio(self):
+        player = self.engine.player
+        if player:
+            for width_name, height_name in (
+                ("dwidth", "dheight"),
+                ("width", "height"),
+            ):
+                try:
+                    width = float(getattr(player, width_name))
+                    height = float(getattr(player, height_name))
+                except (AttributeError, TypeError, ValueError):
+                    continue
+                if width > 0 and height > 0:
+                    return max(0.2, min(5.0, width / height))
+
+            try:
+                params = player.video_params or {}
+                width = float(params.get("dw") or params.get("w"))
+                height = float(params.get("dh") or params.get("h"))
+            except (AttributeError, TypeError, ValueError):
+                pass
+            else:
+                if width > 0 and height > 0:
+                    return max(0.2, min(5.0, width / height))
+
+        fallback = self.video_canvas.width() / max(1, self.video_canvas.height())
+        return max(0.2, min(5.0, fallback))
 
     def show_subtitle_menu(self):
         menu = self._create_styled_menu()
@@ -905,29 +1027,32 @@ class PavoPlayer(QMainWindow):
             self.hud.setFixedWidth(hud_w)
             if not getattr(self.hud, '_user_dragged', False):
                 self.hud.move((self.width() - hud_w) // 2, self.height() - self.hud.height() - 40)
+        if hasattr(self, 'pip_overlay'):
+            self.pip_overlay.setGeometry(self.central_widget.rect())
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.MouseMove: 
-            self.wake_hud()
-            
-        if self._is_pip:
-            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
-                if obj == self.video_canvas or obj == self.central_widget:
-                    self._drag_active = True
-                    self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            elif event.type() == QEvent.MouseMove and getattr(self, '_drag_active', False):
-                self.move(event.globalPosition().toPoint() - self._drag_pos)
-            elif event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
-                self._drag_active = False
+        if event.type() == QEvent.MouseMove:
+            if self._is_pip:
+                if isinstance(obj, QWidget) and obj.window() is self:
+                    self.pip_overlay.notify_activity()
+            else:
+                self.wake_hud()
 
         return super().eventFilter(obj, event)
 
     def leaveEvent(self, event):
+        if self._is_pip:
+            self.pip_overlay.pointer_left()
+            super().leaveEvent(event)
+            return
         self.hud_timer.stop()
         self.hide_hud()
         super().leaveEvent(event)
 
     def wake_hud(self):
+        if self._is_pip:
+            self.pip_overlay.notify_activity()
+            return
         if self.opacity_effect.opacity() < 1.0:
             self.hud.show(); self.top_osd.show()
             self.fade_anim.setEndValue(1.0); self.fade_anim.start()
@@ -938,6 +1063,9 @@ class PavoPlayer(QMainWindow):
         if getattr(self.hud, 'is_playing', True): self.hud_timer.start()
 
     def hide_hud(self):
+        if self._is_pip:
+            self.pip_overlay.hide_controls()
+            return
         if not self.hud.isHidden() and getattr(self.hud, 'is_playing', True):
             if self._hud_interaction_active():
                 self.hud_timer.start()

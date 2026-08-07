@@ -2,6 +2,107 @@
 
 ## Task ID
 
+`PAVO-012`
+
+## Title
+
+Prepare Pavo v1.2.1 Beta
+
+## Status
+
+`Release Metadata Ready - Final Build Pending`
+
+## Priority
+
+`P0`
+
+## Created
+
+`2026-08-07`
+
+## Objective
+
+为包含 PAVO-011 极简 PiP 改进的 Pavo 1.2.1 Beta 生成可验证的 arm64 应用包和 ZIP 候选，但不创建 Tag、GitHub Release 或执行 push。
+
+## Background
+
+Pavo 1.2.0 Beta 已建立自包含 arm64 打包基线。PAVO-011 已通过自动化测试、macOS 实机视觉验收并合并到 `main`，本任务在不改变产品功能与媒体 Runtime 的前提下更新维护版本元数据、发布说明和候选产物。
+
+## Requirements
+
+- 将应用版本更新为 `1.2.1`，Build Number 从 `1` 递增为 `2`。
+- Release Notes 重点记录极简 PiP 控制层、自动显隐、原生 macOS 圆角与阴影，以及按视频比例初始化窗口。
+- 使用固定 Python 3.13.12 与依赖重新生成 arm64 `Pavo.app`。
+- 生成 `Pavo-1.2.1-beta-macos-arm64.zip` 及 SHA-256。
+- 验证 bundle 元数据、架构、deployment target、媒体 Runtime、动态依赖和许可证。
+- 执行现有 PiP 自动化测试和发布回归检查。
+
+## Scope
+
+- `Pavo.spec`
+- `INSTALL.md`
+- `FAQ.md`
+- `docs/release/KNOWN_ISSUES.md`
+- `docs/release/RELEASE_NOTES_v1.2.1.md`（新增）
+- `docs/release/RELEASE_CHECKLIST_v1.2.1-beta.md`（新增）
+- `docs/tasks/ACTIVE.md`
+- Git 忽略的 `dist/Pavo.app`
+- Git 忽略的 `dist/Pavo-1.2.1-beta-macos-arm64.zip`
+
+## Non Goals
+
+- 不修改播放器功能代码、UI 或播放逻辑。
+- 不重新构建或修改 Phase 2A 媒体 Runtime。
+- 不修改签名、公证、DMG 或 GitHub Release 流程。
+- 不创建 Tag、Release，不 push。
+- 不宣称完整 HDR 支持或已完成真实 macOS 13 验收。
+
+## Acceptance Criteria
+
+- `Pavo.app` 的短版本为 `1.2.1`，Build Number 为 `2`。
+- 主程序、所有必要第三方 Mach-O 和媒体 Runtime 均为 arm64，最低系统版本不高于 macOS 13.0。
+- bundle 不依赖 Homebrew、`/opt/homebrew`、`/usr/local` 或 `/opt/local`。
+- bundle 内 libmpv 初始化、FFmpeg 烟测和许可证验证通过。
+- PiP 自动化测试、`compileall` 和 `git diff --check` 通过。
+- 新 ZIP 可解压并通过完整 bundle 验证，SHA-256 已记录。
+- 发布阻塞项被明确记录，未执行任何发布操作。
+
+## Testing
+
+- `venv/bin/python -m compileall src tests tools/media_runtime`
+- `QT_QPA_PLATFORM=offscreen venv/bin/python -m unittest discover -s tests -v`
+- `python3.14 tools/media_runtime/verify.py`
+- `python3.14 tools/media_runtime/verify_bundle.py dist/Pavo.app`
+- `codesign --verify --deep --strict dist/Pavo.app`
+- 检查 `Info.plist`、Mach-O 架构、动态依赖和 ZIP 解压副本。
+- `git diff --check`
+
+## Notes
+
+Planning 已完成。开始时 `main` 与 `origin/main` ahead/behind 均为 `0`，工作区干净，HEAD 为 PAVO-011 Squash 提交 `2daccd1`。应用构建要求 Python 3.13.12；当前通用 `venv` 使用 Python 3.14.3，因此发布包将使用独立的干净 Python 3.13.12 环境构建。
+
+Implementation 和自动检查结果：
+
+- 全新 Python 3.13.12 虚拟环境成功安装 `requirements-build.txt` 的全部固定依赖。
+- PyInstaller 6.19.0 成功生成 arm64 `dist/Pavo.app`。
+- `Info.plist`：版本 `1.2.1`、Build `2`、Bundle Identifier `io.github.hzzzz77.pavo`、最低 macOS `13.0`。
+- Phase 2A Runtime 验证通过：FFmpeg 8.0.3 与 libmpv 0.41.0 均为 arm64、最低 macOS 13.0，且无禁止路径依赖。
+- bundle 验证扫描 54 个 Mach-O，无 deployment target 违规或 Homebrew、MacPorts、`/usr/local` 依赖；libmpv 初始化、FFmpeg 烟测和 17 份许可证验证通过。
+- `codesign --verify --deep --strict` 对构建产物和 ZIP 解压副本均通过，签名仍为 ad-hoc。
+- 在仅系统 `PATH` 的隔离 HOME 中启动打包应用，确认使用 bundle 内 libmpv，mpv 和 OpenGL 初始化成功，应用退出码为 0。
+- PiP 自动化回归 10 项全部通过，覆盖极简控件、自动显隐、播放状态、导航、进度、进入与恢复，以及 Clear Playlist。
+- `compileall` 与 `git diff --check` 通过。
+- 生成 `dist/Pavo-1.2.1-beta-macos-arm64.zip`，大小 `64,139,677` bytes，SHA-256：`5161928a0dc381c53b6529d227199589e47618a55c30e9994dcc247677b35842`。
+- ZIP 解压副本再次通过完整 bundle、签名和版本元数据验证。
+
+用户已确认打包后的 1.2.1 实机播放与 PiP 验收通过。发布前仍需：提交发布元数据后从最终提交重新执行干净构建并计算最终 SHA-256；完成真实 macOS 13 主机验证及第三方许可证义务复核。Developer ID 签名与公证仍不可用，因此本候选只能作为明确标注的 unsigned Beta。
+
+---
+
+# Completed Task
+
+## Task ID
+
 `PAVO-011`
 
 ## Title

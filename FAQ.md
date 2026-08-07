@@ -2,7 +2,7 @@
 
 ## Why Does macOS Say Pavo Is From An Unidentified Developer?
 
-Pavo 1.2.0 Beta is not signed with an Apple Developer ID and has not been
+Pavo 1.2.1 Beta is not signed with an Apple Developer ID and has not been
 notarized by Apple. macOS therefore cannot verify the publisher automatically.
 
 Follow the [installation guide](INSTALL.md) to approve the unsigned beta
@@ -52,7 +52,7 @@ needed by Pavo.
 
 ## Which Macs Are Supported?
 
-Pavo 1.2.0 Beta targets Apple Silicon Macs running macOS 13 or later. Intel Macs
+Pavo 1.2.1 Beta targets Apple Silicon Macs running macOS 13 or later. Intel Macs
 are not supported by this release.
 
 ## How Do I Report A Bug?

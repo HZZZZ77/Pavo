@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 APP_NAME = "Pavo"
-APP_VERSION = "1.2.0"
-APP_BUILD = "1"
+APP_VERSION = "1.2.1"
+APP_BUILD = "2"
 BUNDLE_IDENTIFIER = "io.github.hzzzz77.pavo"
 TARGET_ARCH = "arm64"
 MINIMUM_MACOS_VERSION = "13.0"

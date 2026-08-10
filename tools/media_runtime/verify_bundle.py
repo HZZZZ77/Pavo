@@ -19,6 +19,27 @@ DEFAULT_APP = PROJECT_ROOT / "dist" / "Pavo.app"
 FORBIDDEN_PATHS = ("/opt/homebrew", "/usr/local", "/opt/local")
 ALLOWED_ABSOLUTE_DEPENDENCY_PREFIXES = ("/System/Library/", "/usr/lib/")
 TARGET_MINIMUM_MACOS = (13, 0)
+FORBIDDEN_QT_COMPONENTS = (
+    "QtNetwork",
+    "QtPdf",
+    "QtQml",
+    "QtQuick",
+    "QtVirtualKeyboard",
+)
+EXPECTED_QT_FRAMEWORKS = {
+    "QtCore",
+    "QtDBus",
+    "QtGui",
+    "QtOpenGL",
+    "QtOpenGLWidgets",
+    "QtSvg",
+    "QtWidgets",
+}
+EXPECTED_QT_PLUGINS = {
+    "imageformats/libqjpeg.dylib",
+    "platforms/libqcocoa.dylib",
+    "styles/libqmacstyle.dylib",
+}
 
 
 def output(command: list[str]) -> str:
@@ -154,6 +175,7 @@ def main() -> int:
     contents = app_path / "Contents"
     frameworks = contents / "Frameworks"
     resources_runtime = contents / "Resources" / "media-runtime"
+    resources_compliance = contents / "Resources" / "compliance"
 
     required_paths = {
         "main executable": contents / "MacOS" / "Pavo",
@@ -161,6 +183,11 @@ def main() -> int:
         "bundled libmpv": frameworks / "libmpv.2.dylib",
         "runtime manifest": resources_runtime / "media-runtime-manifest.json",
         "runtime licenses": resources_runtime / "licenses",
+        "third-party notices": resources_compliance / "THIRD_PARTY_NOTICES.md",
+        "source offer": resources_compliance / "SOURCE_OFFER.md",
+        "relinking instructions": resources_compliance / "RELINKING.md",
+        "bundle dependency inventory": resources_compliance / "BUNDLE_DEPENDENCIES_v1.2.1.md",
+        "third-party license texts": resources_compliance / "licenses",
     }
     missing = [f"{name}: {path}" for name, path in required_paths.items() if not path.exists()]
     if missing:
@@ -190,6 +217,39 @@ def main() -> int:
             f"missing={missing_licenses}, extra={extra_licenses}"
         )
 
+    framework_root = frameworks / "PySide6" / "Qt" / "lib"
+    plugin_root = frameworks / "PySide6" / "Qt" / "plugins"
+    qt_frameworks = {
+        path.name.removesuffix(".framework") for path in framework_root.glob("Qt*.framework")
+    }
+    qt_plugins = {
+        path.relative_to(plugin_root).as_posix()
+        for path in plugin_root.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    }
+    forbidden_qt_content = sorted(
+        path.relative_to(app_path).as_posix()
+        for path in app_path.rglob("*")
+        if any(component in path.as_posix() for component in FORBIDDEN_QT_COMPONENTS)
+    )
+    if forbidden_qt_content:
+        raise RuntimeError(f"Bundle contains forbidden Qt content: {forbidden_qt_content}")
+    if qt_frameworks != EXPECTED_QT_FRAMEWORKS:
+        raise RuntimeError(
+            "Unexpected Qt framework set: "
+            f"expected={sorted(EXPECTED_QT_FRAMEWORKS)}, actual={sorted(qt_frameworks)}"
+        )
+    if qt_plugins != EXPECTED_QT_PLUGINS:
+        raise RuntimeError(
+            "Unexpected Qt plugin set: "
+            f"expected={sorted(EXPECTED_QT_PLUGINS)}, actual={sorted(qt_plugins)}"
+        )
+    compliance_license_count = sum(
+        1 for path in required_paths["third-party license texts"].rglob("*") if path.is_file()
+    )
+    if compliance_license_count == 0:
+        raise RuntimeError("Bundle contains no third-party compliance license texts.")
+
     provenance = validate_runtime_provenance(
         manifest,
         bundled_ffmpeg,
@@ -198,6 +258,20 @@ def main() -> int:
 
     macho_files = collect_macho_files(app_path)
     macho_results = [inspect_macho(path) for path in macho_files]
+    macho_names = {path.name for path in macho_files}
+    unresolved_rpath_dependencies = sorted(
+        {
+            dependency
+            for result in macho_results
+            for dependency in result["dependencies"]
+            if dependency.startswith("@rpath/")
+            and Path(dependency).name not in macho_names
+        }
+    )
+    if unresolved_rpath_dependencies:
+        raise RuntimeError(
+            f"Bundle has unresolved @rpath dependencies: {unresolved_rpath_dependencies}"
+        )
     deployment_target_violations = [
         {
             "path": str(Path(result["path"]).relative_to(app_path)),
@@ -265,6 +339,13 @@ def main() -> int:
             "libmpv_initialize_test": "passed",
             "libmpv_install_name": libmpv_id[1],
             "licenses": len(actual_licenses),
+        },
+        "release_compliance": {
+            "license_texts": compliance_license_count,
+            "qt_frameworks": sorted(qt_frameworks),
+            "qt_plugins": sorted(qt_plugins),
+            "unresolved_rpath_dependencies": unresolved_rpath_dependencies,
+            "virtual_keyboard_present": False,
         },
         "result": "failed" if deployment_target_violations else "passed",
     }

@@ -1,6 +1,6 @@
 # Pavo Known Issues
 
-This document lists confirmed limitations relevant to the Pavo 1.2.0 release
+This document lists confirmed limitations relevant to the Pavo 1.2.1 release
 candidate. It is not a complete feature roadmap.
 
 ## Subtitles
@@ -12,7 +12,7 @@ timed subtitles must be corrected outside Pavo.
 
 ## Unsigned Beta
 
-Pavo 1.2.0 Beta is ad-hoc signed rather than signed with an Apple Developer ID,
+Pavo 1.2.1 Beta is ad-hoc signed rather than signed with an Apple Developer ID,
 and it is not notarized. macOS will identify the developer as unverified on the
 first launch.
 
@@ -22,16 +22,25 @@ GitHub Releases page, and compare the SHA-256 checksum with the release notes.
 
 ## Platform Coverage
 
-- Pavo 1.2.0 targets Apple Silicon Macs running macOS 13 or later.
+- Pavo 1.2.1 targets Apple Silicon Macs running macOS 13 or later.
 - Intel Macs and universal binaries are not supported.
 - The current release candidate has been tested on newer Apple Silicon
   hardware, but final validation on a physical macOS 13 host is still pending.
+
+## Picture In Picture
+
+### Maximized Window State Is Not Explicitly Restored
+
+When Picture in Picture is entered from a maximized main window, Pavo restores
+the previous window geometry on exit but does not explicitly restore the
+maximized window state. Normal and fullscreen return paths are unaffected. This
+is tracked as a non-blocking maintenance issue.
 
 ## HDR Validation
 
 HDR10 and HLG metadata are recognized in current playback tests. End-to-end HDR
 output, tone mapping, and visual quality have not been validated on a confirmed
-HDR display. Pavo 1.2.0 therefore does not claim complete HDR support.
+HDR display. Pavo 1.2.1 therefore does not claim complete HDR support.
 
 ## Media Not Covered
 

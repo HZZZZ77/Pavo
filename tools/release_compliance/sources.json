@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "release": "Pavo 1.2.1 Beta",
+  "source_bundle": "Pavo-1.2.1-beta-corresponding-source.tar.xz",
+  "python_runtime_sources": [
+    {
+      "name": "python-mpv",
+      "version": "1.0.8",
+      "archive": "python_mpv-1.0.8.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/source/p/python-mpv/python_mpv-1.0.8.tar.gz",
+      "size": 52680,
+      "sha256": "017fa359da059c831a94c419083491903e6d2f7c81b9841c33c196cabf4b3fe3",
+      "license": "LGPL-2.1-or-later OR GPL-2.0-or-later"
+    },
+    {
+      "name": "PyInstaller",
+      "version": "6.19.0",
+      "archive": "pyinstaller-6.19.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/source/p/pyinstaller/pyinstaller-6.19.0.tar.gz",
+      "size": 4036072,
+      "sha256": "ec73aeb8bd9b7f2f1240d328a4542e90b3c6e6fbc106014778431c616592a865",
+      "license": "GPL-2.0-or-later WITH Bootloader-exception"
+    }
+  ],
+  "qt_embedded_sources": [
+    {
+      "name": "libjpeg-turbo",
+      "version": "3.0.3",
+      "archive": "libjpeg-turbo-3.0.3.tar.gz",
+      "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.0.3/libjpeg-turbo-3.0.3.tar.gz",
+      "size": 2832827,
+      "sha256": "343e789069fc7afbcdfe44dbba7dbbf45afa98a15150e079a38e60e44578865d",
+      "license": "IJG AND BSD-3-Clause",
+      "license_files": [
+        "LICENSE.md",
+        "README.ijg"
+      ],
+      "evidence": "The bundled libqjpeg.dylib identifies libjpeg-turbo version 3.0.3."
+    }
+  ],
+  "qt_sources": [
+    {
+      "name": "Qt Base",
+      "version": "6.9.3",
+      "archive": "qtbase-everywhere-src-6.9.3.tar.xz",
+      "url": "https://ftp.fau.de/qtproject/archive/qt/6.9/6.9.3/submodules/qtbase-everywhere-src-6.9.3.tar.xz",
+      "canonical_url": "https://download.qt.io/archive/qt/6.9/6.9.3/submodules/qtbase-everywhere-src-6.9.3.tar.xz",
+      "size": 49856272,
+      "sha256": "c5a1a2f660356ec081febfa782998ae5ddbc5925117e64f50e4be9cd45b8dc6e",
+      "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+    },
+    {
+      "name": "Qt SVG",
+      "version": "6.9.3",
+      "archive": "qtsvg-everywhere-src-6.9.3.tar.xz",
+      "url": "https://download.qt.io/archive/qt/6.9/6.9.3/submodules/qtsvg-everywhere-src-6.9.3.tar.xz",
+      "size": 2004192,
+      "sha256": "db76aa3358cbbe6fce7da576ff4669cb9801920188c750d3b12783bbe97026e2",
+      "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+    },
+    {
+      "name": "Qt for Python (PySide6 and shiboken6)",
+      "version": "6.9.3",
+      "archive": "pyside-setup-everywhere-src-6.9.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.9.3-src/pyside-setup-everywhere-src-6.9.3.tar.xz",
+      "size": 16663380,
+      "sha256": "7cd2d5abb98f2e6f442b0e41f5fcf930e7312ae4b17f681316b1adc7b63bb172",
+      "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+    }
+  ]
+}

@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 APP_NAME = "Pavo"
-APP_VERSION = "1.2.0"
-APP_BUILD = "1"
+APP_VERSION = "1.2.1"
+APP_BUILD = "2"
 BUNDLE_IDENTIFIER = "io.github.hzzzz77.pavo"
 TARGET_ARCH = "arm64"
 MINIMUM_MACOS_VERSION = "13.0"
@@ -27,6 +27,29 @@ MEDIA_MANIFEST = MEDIA_RUNTIME / "media-runtime-manifest.json"
 MEDIA_LICENSES = MEDIA_RUNTIME / "licenses"
 MEDIA_FFMPEG = MEDIA_RUNTIME / "bin" / "ffmpeg"
 MEDIA_LIBMPV = MEDIA_RUNTIME / "lib" / "libmpv.2.dylib"
+COMPLIANCE_LICENSES = PROJECT_ROOT / "build" / "release-compliance" / "licenses"
+COMPLIANCE_DOCUMENTS = [
+    PROJECT_ROOT / "THIRD_PARTY_NOTICES.md",
+    PROJECT_ROOT / "docs" / "release" / "SOURCE_OFFER.md",
+    PROJECT_ROOT / "docs" / "release" / "RELINKING.md",
+    PROJECT_ROOT / "docs" / "release" / "BUNDLE_DEPENDENCIES_v1.2.1.md",
+]
+
+ALLOWED_QT_FRAMEWORKS = {
+    "QtCore",
+    "QtDBus",
+    "QtGui",
+    "QtOpenGL",
+    "QtOpenGLWidgets",
+    "QtSvg",
+    "QtWidgets",
+}
+ALLOWED_QT_BINDINGS = ALLOWED_QT_FRAMEWORKS - {"QtDBus"}
+ALLOWED_QT_PLUGINS = {
+    "PySide6/Qt/plugins/imageformats/libqjpeg.dylib",
+    "PySide6/Qt/plugins/platforms/libqcocoa.dylib",
+    "PySide6/Qt/plugins/styles/libqmacstyle.dylib",
+}
 
 
 def sha256(path):
@@ -37,11 +60,36 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def qt_runtime_entry_is_allowed(entry):
+    destination = entry[0].replace("\\", "/")
+    if destination.startswith("PySide6/Qt/plugins/"):
+        return destination in ALLOWED_QT_PLUGINS
+
+    for framework in ALLOWED_QT_FRAMEWORKS:
+        if destination == framework:
+            return True
+        if destination.startswith(f"PySide6/Qt/lib/{framework}.framework/"):
+            return True
+    for binding in ALLOWED_QT_BINDINGS:
+        if destination.startswith(f"PySide6/{binding}."):
+            return True
+
+    if destination.startswith("PySide6/Qt/lib/Qt") or (
+        destination.startswith("Qt") and entry[-1] == "SYMLINK"
+    ):
+        return False
+    if destination.startswith("PySide6/Qt") and destination.endswith(".abi3.so"):
+        return False
+    return True
+
+
 required_runtime_paths = [
     MEDIA_MANIFEST,
     MEDIA_LICENSES,
     MEDIA_FFMPEG,
     MEDIA_LIBMPV,
+    COMPLIANCE_LICENSES,
+    *COMPLIANCE_DOCUMENTS,
 ]
 missing_runtime_paths = [path for path in required_runtime_paths if not path.exists()]
 if missing_runtime_paths:
@@ -87,14 +135,30 @@ a = Analysis(
     datas=[
         (str(MEDIA_MANIFEST), 'media-runtime'),
         (str(MEDIA_LICENSES), 'media-runtime/licenses'),
+        (str(PROJECT_ROOT / 'LICENSE'), 'compliance'),
+        (str(COMPLIANCE_LICENSES), 'compliance/licenses'),
+        *[(str(path), 'compliance') for path in COMPLIANCE_DOCUMENTS],
     ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'PySide6.QtDBus',
+        'PySide6.QtNetwork',
+        'PySide6.QtPdf',
+        'PySide6.QtQml',
+        'PySide6.QtQuick',
+        'PySide6.QtVirtualKeyboard',
+    ],
     noarchive=False,
     optimize=0,
+)
+a.binaries = type(a.binaries)(
+    entry for entry in a.binaries if qt_runtime_entry_is_allowed(entry)
+)
+a.datas = type(a.datas)(
+    entry for entry in a.datas if qt_runtime_entry_is_allowed(entry)
 )
 pyz = PYZ(a.pure)
 

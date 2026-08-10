@@ -2,6 +2,103 @@
 
 ## Task ID
 
+`PAVO-013`
+
+## Title
+
+Release Compliance Remediation
+
+## Status
+
+`Completed`
+
+## Priority
+
+`P0`
+
+## Created
+
+`2026-08-07`
+
+## Objective
+
+精简 Pavo 1.2.1 Beta 的实际应用包，并提供最终 Bundle 中第三方组件所需的许可证告知、精确对应源码和动态重链接说明，使发布候选满足当前开源依赖分发要求。
+
+## Background
+
+PAVO-012 已生成可运行的 arm64、macOS 13+ 候选包，但合规复核发现 PyInstaller 自动收集了产品未使用的 Qt Virtual Keyboard、Qt PDF、QML 和 Quick 模块。Virtual Keyboard 插件还引入 GPLv3-only 模块；现有包虽含媒体 Runtime 的许可证文件，但缺少 Bundle 全量第三方清单、Qt/PySide6/shiboken6 对应源码以及面向用户的源码获取和重链接说明。
+
+## Requirements
+
+- 排除未使用的 Qt Virtual Keyboard、Qt PDF、QML、Quick 模块及其插件，并以最终 Bundle 动态依赖证明保留模块的必要性。
+- 按最终 Bundle 实际文件枚举第三方组件、版本、许可证和动态链接关系。
+- 新增 `THIRD_PARTY_NOTICES.md`、`docs/release/SOURCE_OFFER.md` 和 `docs/release/RELINKING.md`。
+- 在 Git 忽略的 `dist/source-archives/` 准备媒体 Runtime、Qt 6.9.3、PySide6 6.9.3 和 shiboken6 6.9.3 的精确对应源码、补丁、构建元数据及 SHA-256。
+- 重新构建并验证 Pavo 1.2.1 Beta App 和 ZIP。
+- 只读审查已发布的 1.2.0 Beta，不修改远端 Release。
+
+## Scope
+
+- `Pavo.spec`
+- `tools/media_runtime/verify_bundle.py`
+- `tools/release_compliance/`（新增审计和源码归档工具）
+- `THIRD_PARTY_NOTICES.md`（新增）
+- `docs/release/SOURCE_OFFER.md`（新增）
+- `docs/release/RELINKING.md`（新增）
+- `docs/release/BUNDLE_DEPENDENCIES_v1.2.1.md`（新增）
+- `docs/tasks/ACTIVE.md`
+- Git 忽略的 `dist/Pavo.app`、发布 ZIP 和 `dist/source-archives/`
+
+## Non Goals
+
+- 不修改播放器功能代码、UI、播放逻辑或媒体 Runtime 二进制。
+- 不改变 Pavo 1.2.1 / Build 2 的版本元数据。
+- 不配置 Developer ID 签名、公证或 DMG。
+- 不修改、删除或替换现有 GitHub Release。
+- 不创建 Tag、Release，不 commit，不 push。
+
+## Acceptance Criteria
+
+- 最终 Bundle 不包含 Qt Virtual Keyboard、Qt PDF、QML、Quick 或对应插件，应用实际所需 Qt 模块均有依赖证据。
+- 最终 Bundle 第三方清单来自文件和 Mach-O 扫描，不由 requirements 推测。
+- 安装包包含清晰的第三方告知、源码获取和重链接说明。
+- `dist/source-archives/` 中每个对应源码和补丁均有 SHA-256，且能追溯到实际构建版本和参数。
+- App 与 ZIP 继续满足 arm64、macOS 13+、无 Homebrew 依赖、Runtime 完整和版本元数据要求。
+- 自动化测试、真实启动、播放和 PiP 回归通过；ZIP 解压副本复验通过。
+- 1.2.0 Beta 的同类问题有只读审查结论。
+
+## Testing
+
+- `venv/bin/python -m compileall src tests tools/media_runtime tools/release_compliance`
+- `QT_QPA_PLATFORM=offscreen venv/bin/python -m unittest discover -s tests -v`
+- `python3.14 tools/media_runtime/verify.py`
+- `python3.14 tools/media_runtime/verify_bundle.py dist/Pavo.app`
+- 最终 Bundle 文件、`otool`、`vtool`、许可证和源码 SHA-256 审计。
+- 隔离环境启动、真实媒体播放和 PiP 回归。
+- ZIP 解压后重复 Bundle 审计。
+- `codesign --verify --deep --strict dist/Pavo.app`
+- `git diff --check`
+
+## Notes
+
+Planning 已完成。任务从本地 `main` 的 PAVO-012 最终提交 `b5bccd8` 创建独立分支 `codex/pavo-013-release-compliance`，开始时工作区干净且未执行 push。
+
+初始 Bundle 证据：产品源码只导入 QtCore、QtGui、QtWidgets、QtOpenGLWidgets 和 QtSvg。`libqtvirtualkeyboardplugin.dylib` 是 QtVirtualKeyboard、QtVirtualKeyboardQml、QtQuick、QtQml 系列和 QtNetwork 的引入入口；`libqpdf.dylib` 是 QtPdf 的引入入口。两者均不是 Pavo 文件播放或 UI 所需能力，应在打包分析结果中精确排除。QtOpenGL、QtWidgets、QtGui、QtCore 和 QtSvg 则由实际 PySide6 binding 及 OpenGL 视频画布直接依赖。
+
+Implementation 记录：最终 allowlist 保留 QtCore、QtDBus、QtGui、QtWidgets、QtOpenGL、QtOpenGLWidgets、QtSvg，以及 Cocoa platform、macOS style 和 JPEG imageformat 三个插件。QtDBus 由官方 QtGui 的强 `@rpath/QtDBus` 依赖保留；其 Python binding 未打包。Virtual Keyboard、PDF、QML、Quick、Network、TLS、network information、touch input 及其他无关插件均从 Analysis 结果排除。Bundle 从 54 个 Mach-O 精简为 23 个，应用体积由约 154 MB 降至约 128 MB。
+
+对应源码记录：`dist/source-archives/` 准备 Qt 3 份、Qt wheel 内嵌依赖 1 份、媒体 Runtime 13 份、Python Runtime 2 份精确归档，并包含构建材料、manifest 和 SHA-256。二进制检查发现官方 Qt JPEG 插件实际标识 libjpeg-turbo 3.0.3，与 Qt 6.9.3 源码 attribution 中的 3.1.2 不同，因此额外固定 3.0.3 源码，未以较新源码替代。
+
+阶段测试：PAVO-013 实施阶段的 compileall、10 项自动化测试、媒体 Runtime 验证、23 个 Mach-O Bundle 审计、无 Homebrew 路径检查、libmpv 初始化和 FFmpeg smoke test 均通过。打包 App 实机完成启动、OpenGL 初始化、真实媒体播放、进入 PiP、返回主窗口并正常退出；日志确认使用 Bundle 内 `libmpv.2.dylib`。ZIP 解压副本通过 Bundle、Runtime、Qt allowlist、`@rpath` 和 codesign 结构复验。最终发布资产的权威大小与 SHA-256 以 PAVO-013 最终 commit 后的干净构建结果为准。
+
+v1.2.0-beta 只读审计：本地已发布 ZIP SHA-256 为 `5adc58a30ab6e000f6b7024129be49f701aa4b8ede979ed6237260b6db15224a`，含 54 个 Mach-O，并包含 Qt Virtual Keyboard、VirtualKeyboardQml、PDF、QML、Quick 及对应插件；未包含本任务新增的 notices、source offer 和 relinking 材料。未对现有 Release 做任何修改。
+
+---
+
+# Completed Task
+
+## Task ID
+
 `PAVO-011`
 
 ## Title

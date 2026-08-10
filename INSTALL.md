@@ -1,6 +1,6 @@
-# Install Pavo 1.2.0 Beta
+# Install Pavo 1.2.1 Beta
 
-Pavo 1.2.0 Beta supports Apple Silicon Macs running macOS 13 or later.
+Pavo 1.2.1 Beta supports Apple Silicon Macs running macOS 13 or later.
 
 This beta is not signed with an Apple Developer ID and is not notarized. macOS
 will ask you to approve the app the first time it is opened.
@@ -9,13 +9,13 @@ will ask you to approve the app the first time it is opened.
 
 1. Open the official
    [Pavo GitHub Releases](https://github.com/HZZZZ77/Pavo/releases) page.
-2. Download `Pavo-1.2.0-beta-macos-arm64.zip`.
+2. Download `Pavo-1.2.1-beta-macos-arm64.zip`.
 3. Do not download Pavo from third-party mirrors.
 4. Compare the downloaded file's SHA-256 checksum with the checksum published
    in the GitHub Release:
 
 ```bash
-shasum -a 256 Pavo-1.2.0-beta-macos-arm64.zip
+shasum -a 256 Pavo-1.2.1-beta-macos-arm64.zip
 ```
 
 ## Install
